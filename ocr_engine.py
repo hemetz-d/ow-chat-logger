@@ -10,7 +10,7 @@ class OCREngine:
             mask,
             detail=1,
             paragraph=False,
-            text_threshold=0.4,
+            text_threshold=0.5,
             allowlist='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789# :[]*!?.,-üäöÜÄÖ+#()&%$§"='
         )
 

@@ -3,8 +3,9 @@ import numpy as np
 
 from config import CONFIG
 
-def create_chat_masks(img_bgr):
-    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+def create_chat_masks(img_rgb):
+    # pyautogui screenshots are RGB; OpenCV expects BGR by default.
+    hsv = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2HSV)
 
     # BLUE (team)
     blue_lower = np.array([85, 150, 150])
