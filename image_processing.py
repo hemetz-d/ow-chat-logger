@@ -8,13 +8,13 @@ def create_chat_masks(img_rgb):
     hsv = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2HSV)
 
     # BLUE (team)
-    blue_lower = np.array([85, 150, 150])
+    blue_lower = np.array([90, 140, 140])
     blue_upper = np.array([110, 255, 255])
     blue_mask = cv2.inRange(hsv, blue_lower, blue_upper)
 
     # ORANGE (all)
-    orange_lower = np.array([2, 120, 150])
-    orange_upper = np.array([25, 255, 255])
+    orange_lower = np.array([8, 160, 160])
+    orange_upper = np.array([18, 255, 255])
     orange_mask = cv2.inRange(hsv, orange_lower, orange_upper)
 
     return blue_mask, orange_mask
