@@ -22,7 +22,8 @@ def capture():
 def main():
     ocr = OCREngine(
         CONFIG["languages"],
-        CONFIG["confidence_threshold"]
+        CONFIG["confidence_threshold"],
+        CONFIG["text_threshold"],
     )
 
     chat_dedup = DuplicateFilter(CONFIG["max_remembered"])
