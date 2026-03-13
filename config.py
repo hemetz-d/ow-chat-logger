@@ -20,5 +20,6 @@ CONFIG = {
 IGNORED_SENDERS = {"team", "match"}
 DEBUG_LEVEL = 2
 
-LOG_FILE = "chat_log.csv"
+CHAT_LOG = "chat_log.csv"
+HERO_LOG = "hero_log.csv"
 SNAP_DIR = "debug_snaps"

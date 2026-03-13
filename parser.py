@@ -30,7 +30,8 @@ SYSTEM_MESSAGES = [
     "Chat and/or Voice enabled. Voice chat may be recorded to investigate and verify reports of disruptive behavior. Remember to act responsibly, protect your personal information, and report anything offensive.",
     "Voice chat may be recorded to investigate and verify reports of disruptive behavior.",
     "Constant voice line use can distract others Unlockable voice lines muted for",
-    "Joined team voice chat - Push to talk. player in channel. Press P to access voice channels"
+    "Joined team voice chat - Push to talk. player in channel. Press P to access voice channels",
+    "The number of messages that can be sent to this channel is limited, please wait to send another message.",
 ]
 
 def generate_fragments(messages, size=15, step=1):

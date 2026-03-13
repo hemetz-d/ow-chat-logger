@@ -1,8 +1,9 @@
+import re
 import time
 import numpy as np
 import pyautogui
 
-from config import CONFIG, IGNORED_SENDERS, LOG_FILE
+from config import CONFIG, IGNORED_SENDERS, CHAT_LOG, HERO_LOG
 from deduplication import DuplicateFilter
 from chat_logger import ChatLogger
 from hero_logger import HeroLogger
@@ -29,8 +30,8 @@ def main():
     chat_dedup = DuplicateFilter(CONFIG["max_remembered"])
     hero_dedup = DuplicateFilter(CONFIG["max_remembered"])
 
-    hero_logger = HeroLogger("hero_log.csv")
-    chat_logger = ChatLogger(LOG_FILE)
+    hero_logger = HeroLogger(HERO_LOG)
+    chat_logger = ChatLogger(CHAT_LOG)
 
     team_buffer = MessageBuffer()
     all_buffer = MessageBuffer()
@@ -61,7 +62,7 @@ def main():
                     if not finished:
                         continue
 
-                    player = finished["player"].strip()
+                    player = re.sub(r"\s+", "", finished["player"].strip())
                     msg = finished["msg"].strip()
                     category = finished["category"]
                     hero = finished.get("hero", "").strip()
