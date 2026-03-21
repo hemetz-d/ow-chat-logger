@@ -1,0 +1,5 @@
+{
+  "log_dir": "%APPDATA%\\ow-chat-logger",
+  "confidence_threshold": 0.8,
+  "text_threshold": 0.6
+}
