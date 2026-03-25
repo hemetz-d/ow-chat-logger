@@ -139,6 +139,7 @@ def _process_lines(
     chat_logger,
     hero_logger,
 ) -> None:
+    """Process one screenshot's OCR lines as an isolated parsing session."""
     for chat_type in ("team", "all"):
         lines = lines_by_channel[chat_type]
         buffer = team_buffer if chat_type == "team" else all_buffer
@@ -153,6 +154,15 @@ def _process_lines(
                 chat_logger=chat_logger,
                 hero_logger=hero_logger,
             )
+
+    _flush_buffers(
+        team_buffer,
+        all_buffer,
+        chat_dedup=chat_dedup,
+        hero_dedup=hero_dedup,
+        chat_logger=chat_logger,
+        hero_logger=hero_logger,
+    )
 
 
 def _capture_worker(frame_queue, stop_event, error_queue) -> None:

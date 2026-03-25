@@ -4,7 +4,13 @@ import threading
 from queue import Queue
 from unittest.mock import MagicMock
 
-from ow_chat_logger.main import LatestFrameQueue, _process_finished, _processing_worker
+from ow_chat_logger.buffer import MessageBuffer
+from ow_chat_logger.main import (
+    LatestFrameQueue,
+    _process_finished,
+    _process_lines,
+    _processing_worker,
+)
 
 
 def test_process_finished_standard_logs_once():
@@ -100,13 +106,8 @@ def test_processing_worker_drains_queue_after_stop(monkeypatch):
         stop_event,
         error_queue,
         ocr=MagicMock(),
-        team_buffer=MagicMock(feed=MagicMock(return_value={
-            "category": "standard",
-            "player": "Alice",
-            "hero": "",
-            "msg": "hi",
-        })),
-        all_buffer=MagicMock(feed=MagicMock(return_value=None)),
+        team_buffer=MessageBuffer(),
+        all_buffer=MessageBuffer(),
         chat_dedup=MagicMock(is_new=MagicMock(return_value=True)),
         hero_dedup=MagicMock(),
         chat_logger=chat_logger,
@@ -116,3 +117,33 @@ def test_processing_worker_drains_queue_after_stop(monkeypatch):
     assert error_queue.empty()
     assert processed == ["frame-1", "frame-2"]
     assert chat_logger.log.call_count == 2
+
+
+def test_process_lines_does_not_carry_continuation_between_screenshots():
+    chat_logger = MagicMock()
+    team_buffer = MessageBuffer()
+    all_buffer = MessageBuffer()
+    chat_dedup = MagicMock()
+    chat_dedup.is_new.return_value = True
+
+    _process_lines(
+        {"team": ["[Alice] : hello"], "all": []},
+        team_buffer,
+        all_buffer,
+        chat_dedup=chat_dedup,
+        hero_dedup=MagicMock(),
+        chat_logger=chat_logger,
+        hero_logger=MagicMock(),
+    )
+
+    _process_lines(
+        {"team": ["continued text"], "all": []},
+        team_buffer,
+        all_buffer,
+        chat_dedup=chat_dedup,
+        hero_dedup=MagicMock(),
+        chat_logger=chat_logger,
+        hero_logger=MagicMock(),
+    )
+
+    assert chat_logger.log.call_count == 1
