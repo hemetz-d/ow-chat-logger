@@ -1,5 +1,7 @@
 import re
 
+from ow_chat_logger.matcher import AhoCorasickMatcher
+
 STANDARD_PATTERN = re.compile(
     r'^\[(?P<player>[^\]]+)\]\s*:\s*(?P<msg>.*)$'
 )
@@ -51,6 +53,7 @@ def generate_fragments(messages, size=15, step=1):
 
 SYSTEM_FRAGMENTS = generate_fragments(SYSTEM_MESSAGES)
 SYSTEM_REGEX = re.compile("|".join(SYSTEM_PATTERNS), re.IGNORECASE)
+SYSTEM_MATCHER = AhoCorasickMatcher(SYSTEM_FRAGMENTS)
 
 def normalize(text):
     text = text.strip()
@@ -64,9 +67,8 @@ def normalize(text):
 
     return text
 
-def contains_fragment(line, fragments):
-    lower = line.lower()
-    return any(f in lower for f in fragments)
+def contains_fragment(line, matcher=SYSTEM_MATCHER):
+    return matcher.contains_any(line.lower())
 
 def classify_line(line):
     line = normalize(line)
@@ -75,7 +77,7 @@ def classify_line(line):
         return {"category": "empty"}
 
     # Detect system messages
-    if SYSTEM_REGEX.search(line) or contains_fragment(line, SYSTEM_FRAGMENTS):
+    if SYSTEM_REGEX.search(line) or contains_fragment(line):
         return {
             "category": "system",
             "msg": line

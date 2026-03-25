@@ -8,8 +8,9 @@ import pytest
 from ow_chat_logger.config import resolve_log_dir
 
 
-def test_resolve_log_dir_expanduser(monkeypatch, tmp_path):
-    home = tmp_path
+def test_resolve_log_dir_expanduser(monkeypatch):
+    home = Path(__file__).resolve().parent / "_tmp_home"
+    home.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
     p = resolve_log_dir("~/ow-chat-logger")
@@ -17,7 +18,9 @@ def test_resolve_log_dir_expanduser(monkeypatch, tmp_path):
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="%APPDATA% expansion is Windows-specific")
-def test_resolve_log_dir_appdata(monkeypatch, tmp_path):
-    monkeypatch.setenv("APPDATA", str(tmp_path))
+def test_resolve_log_dir_appdata(monkeypatch):
+    appdata = Path(__file__).resolve().parent / "_tmp_appdata"
+    appdata.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("APPDATA", str(appdata))
     p = resolve_log_dir("%APPDATA%\\ow-chat-logger")
-    assert p == tmp_path / "ow-chat-logger"
+    assert p == appdata / "ow-chat-logger"

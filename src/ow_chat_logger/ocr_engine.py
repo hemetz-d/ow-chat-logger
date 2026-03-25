@@ -1,5 +1,12 @@
 import easyocr
 
+OCR_ALLOWLIST = (
+    'abcdefghijklmnopqrstuvwxyz'
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    '0123456789'
+    '# :[]*!?.,-üäöÜÄÖ+#()&%$§"='
+)
+
 
 class OCREngine:
     def __init__(self, languages, confidence_threshold, text_threshold, use_gpu=True):
@@ -22,7 +29,7 @@ class OCREngine:
             detail=1,
             paragraph=False,
             text_threshold=self.text_threshold,
-            allowlist='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789# :[]*!?.,-üäöÜÄÖ+#()&%$§"='
+            allowlist=OCR_ALLOWLIST,
         )
 
         return [

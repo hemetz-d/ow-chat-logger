@@ -1,4 +1,4 @@
-"""Shared OCR pipeline: screenshot RGB → team / all chat line lists.
+"""Shared OCR pipeline: screenshot RGB -> team / all chat line lists.
 
 Used by regression tests and optional tooling; mirrors ``main`` loop logic.
 """
@@ -36,7 +36,7 @@ def extract_chat_lines(
     Parameters
     ----------
     rgb_image
-        H×W×3 uint8 RGB (same as ``pyautogui.screenshot`` after ``np.array``).
+        HxWx3 uint8 RGB (same as ``pyautogui.screenshot`` after ``np.array``).
     ocr
         Initialized :class:`OCREngine` (can be CPU/GPU).
     config_overrides

@@ -1,8 +1,10 @@
-"""Tests for _process_finished side effects."""
+"""Tests for main-loop helpers and _process_finished side effects."""
 
+import threading
+from queue import Queue
 from unittest.mock import MagicMock
 
-from ow_chat_logger.main import _process_finished
+from ow_chat_logger.main import LatestFrameQueue, _process_finished, _processing_worker
 
 
 def test_process_finished_standard_logs_once():
@@ -62,3 +64,55 @@ def test_process_finished_none_noop():
         hero_logger=MagicMock(),
     )
     chat_logger.log.assert_not_called()
+
+
+def test_latest_frame_queue_drops_oldest_item():
+    frame_queue = LatestFrameQueue(maxsize=2)
+
+    frame_queue.put_latest("first")
+    frame_queue.put_latest("second")
+    frame_queue.put_latest("third")
+
+    assert frame_queue.get(timeout=0.01) == "second"
+    assert frame_queue.get(timeout=0.01) == "third"
+
+
+def test_processing_worker_drains_queue_after_stop(monkeypatch):
+    processed = []
+
+    def fake_extract_chat_lines(screenshot, ocr):
+        processed.append(screenshot)
+        return {"team": ["[Alice] : hi"], "all": []}
+
+    monkeypatch.setattr("ow_chat_logger.main.extract_chat_lines", fake_extract_chat_lines)
+
+    frame_queue = LatestFrameQueue(maxsize=2)
+    frame_queue.put_latest("frame-1")
+    frame_queue.put_latest("frame-2")
+
+    stop_event = threading.Event()
+    stop_event.set()
+    error_queue = Queue()
+    chat_logger = MagicMock()
+
+    _processing_worker(
+        frame_queue,
+        stop_event,
+        error_queue,
+        ocr=MagicMock(),
+        team_buffer=MagicMock(feed=MagicMock(return_value={
+            "category": "standard",
+            "player": "Alice",
+            "hero": "",
+            "msg": "hi",
+        })),
+        all_buffer=MagicMock(feed=MagicMock(return_value=None)),
+        chat_dedup=MagicMock(is_new=MagicMock(return_value=True)),
+        hero_dedup=MagicMock(),
+        chat_logger=chat_logger,
+        hero_logger=MagicMock(),
+    )
+
+    assert error_queue.empty()
+    assert processed == ["frame-1", "frame-2"]
+    assert chat_logger.log.call_count == 2

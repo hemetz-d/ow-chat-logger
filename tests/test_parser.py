@@ -2,7 +2,8 @@
 
 import pytest
 
-from ow_chat_logger.parser import classify_line, normalize
+from ow_chat_logger.ocr_engine import OCR_ALLOWLIST
+from ow_chat_logger.parser import classify_line, contains_fragment, normalize
 
 
 @pytest.mark.parametrize(
@@ -69,3 +70,12 @@ def test_normalize_whitespace_and_semicolon():
 
 def test_normalize_pipe_to_I():
     assert normalize("| am here") == "I am here"
+
+
+def test_contains_fragment_detects_system_message_fragment():
+    assert contains_fragment("remember to act responsibly and report anything offensive")
+
+
+def test_ocr_allowlist_contains_german_characters():
+    for char in "üäöÜÄÖ§":
+        assert char in OCR_ALLOWLIST

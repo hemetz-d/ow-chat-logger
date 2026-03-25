@@ -1,17 +1,46 @@
 import datetime
 import re
+import threading
 import time
 import traceback
+from queue import Empty, Full, Queue
 
 import numpy as np
 import pyautogui
 
+from ow_chat_logger.buffer import MessageBuffer
 from ow_chat_logger.config import CONFIG, IGNORED_SENDERS, CHAT_LOG, HERO_LOG, CRASH_LOG
 from ow_chat_logger.deduplication import DuplicateFilter
 from ow_chat_logger.logger import MessageLogger
 from ow_chat_logger.ocr_engine import OCREngine
 from ow_chat_logger.pipeline import extract_chat_lines
-from ow_chat_logger.buffer import MessageBuffer
+
+
+class LatestFrameQueue:
+    """Bounded frame queue that always keeps the freshest screenshots."""
+
+    def __init__(self, maxsize: int = 2):
+        self._queue = Queue(maxsize=maxsize)
+
+    def put_latest(self, item) -> None:
+        while True:
+            try:
+                self._queue.put_nowait(item)
+                return
+            except Full:
+                try:
+                    self._queue.get_nowait()
+                except Empty:
+                    continue
+
+    def get(self, timeout: float):
+        return self._queue.get(timeout=timeout)
+
+    def get_nowait(self):
+        return self._queue.get_nowait()
+
+    def empty(self) -> bool:
+        return self._queue.empty()
 
 
 def capture():
@@ -23,9 +52,6 @@ def capture():
 def _write_crash_log(exc: BaseException) -> None:
     """Append a crash traceback to the configured crash log file."""
 
-    # Ensure we always have an absolute path and that the directory exists.
-    # The config module already creates the log folder, but we guard against
-    # cases where the file might be deleted during runtime.
     from pathlib import Path
 
     crash_log_path = Path(CRASH_LOG)
@@ -103,6 +129,97 @@ def _flush_buffers(
     )
 
 
+def _process_lines(
+    lines_by_channel,
+    team_buffer,
+    all_buffer,
+    *,
+    chat_dedup,
+    hero_dedup,
+    chat_logger,
+    hero_logger,
+) -> None:
+    for chat_type in ("team", "all"):
+        lines = lines_by_channel[chat_type]
+        buffer = team_buffer if chat_type == "team" else all_buffer
+
+        for line in lines:
+            finished = buffer.feed(line)
+            _process_finished(
+                finished,
+                chat_type,
+                chat_dedup=chat_dedup,
+                hero_dedup=hero_dedup,
+                chat_logger=chat_logger,
+                hero_logger=hero_logger,
+            )
+
+
+def _capture_worker(frame_queue, stop_event, error_queue) -> None:
+    interval = max(float(CONFIG["capture_interval"]), 0.0)
+    next_capture = time.monotonic()
+
+    try:
+        while not stop_event.is_set():
+            now = time.monotonic()
+            if now < next_capture and stop_event.wait(next_capture - now):
+                break
+
+            frame_queue.put_latest(capture())
+
+            now = time.monotonic()
+            if interval == 0:
+                next_capture = now
+            else:
+                next_capture = max(next_capture + interval, now)
+    except Exception as exc:
+        error_queue.put(exc)
+        stop_event.set()
+
+
+def _processing_worker(
+    frame_queue,
+    stop_event,
+    error_queue,
+    *,
+    ocr,
+    team_buffer,
+    all_buffer,
+    chat_dedup,
+    hero_dedup,
+    chat_logger,
+    hero_logger,
+) -> None:
+    try:
+        while not stop_event.is_set() or not frame_queue.empty():
+            try:
+                if stop_event.is_set():
+                    screenshot = frame_queue.get_nowait()
+                else:
+                    screenshot = frame_queue.get(timeout=0.1)
+            except Empty:
+                continue
+
+            lines_by_channel = extract_chat_lines(screenshot, ocr)
+            _process_lines(
+                lines_by_channel,
+                team_buffer,
+                all_buffer,
+                chat_dedup=chat_dedup,
+                hero_dedup=hero_dedup,
+                chat_logger=chat_logger,
+                hero_logger=hero_logger,
+            )
+    except Exception as exc:
+        error_queue.put(exc)
+        stop_event.set()
+
+
+def _close_loggers(*loggers) -> None:
+    for logger in loggers:
+        logger.close()
+
+
 def main():
     ocr = OCREngine(
         CONFIG["languages"],
@@ -119,32 +236,43 @@ def main():
 
     team_buffer = MessageBuffer()
     all_buffer = MessageBuffer()
+    frame_queue = LatestFrameQueue()
+    stop_event = threading.Event()
+    error_queue = Queue()
+
+    capture_thread = threading.Thread(
+        target=_capture_worker,
+        args=(frame_queue, stop_event, error_queue),
+        name="capture-worker",
+        daemon=True,
+    )
+    processing_thread = threading.Thread(
+        target=_processing_worker,
+        args=(frame_queue, stop_event, error_queue),
+        kwargs={
+            "ocr": ocr,
+            "team_buffer": team_buffer,
+            "all_buffer": all_buffer,
+            "chat_dedup": chat_dedup,
+            "hero_dedup": hero_dedup,
+            "chat_logger": chat_logger,
+            "hero_logger": hero_logger,
+        },
+        name="processing-worker",
+        daemon=True,
+    )
 
     print("ChatOCR running... Ctrl+C to stop.")
 
     try:
         try:
+            capture_thread.start()
+            processing_thread.start()
+
             while True:
-                screenshot = capture()
-
-                lines_by_channel = extract_chat_lines(screenshot, ocr)
-
-                for chat_type in ("team", "all"):
-                    lines = lines_by_channel[chat_type]
-                    buffer = team_buffer if chat_type == "team" else all_buffer
-
-                    for line in lines:
-                        finished = buffer.feed(line)
-                        _process_finished(
-                            finished,
-                            chat_type,
-                            chat_dedup=chat_dedup,
-                            hero_dedup=hero_dedup,
-                            chat_logger=chat_logger,
-                            hero_logger=hero_logger,
-                        )
-
-                time.sleep(CONFIG["capture_interval"])
+                if not error_queue.empty():
+                    raise error_queue.get()
+                time.sleep(0.1)
 
         except KeyboardInterrupt:
             print("\nStopping ChatOCR. Goodbye!\n")
@@ -152,6 +280,9 @@ def main():
             print("\nUnexpected error. Writing crash log and exiting.\n")
             _write_crash_log(exc)
     finally:
+        stop_event.set()
+        capture_thread.join(timeout=1.0)
+        processing_thread.join(timeout=1.0)
         _flush_buffers(
             team_buffer,
             all_buffer,
@@ -160,6 +291,9 @@ def main():
             chat_logger=chat_logger,
             hero_logger=hero_logger,
         )
+        chat_logger.flush()
+        hero_logger.flush()
+        _close_loggers(chat_logger, hero_logger)
 
 
 if __name__ == "__main__":
