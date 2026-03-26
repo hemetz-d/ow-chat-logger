@@ -65,6 +65,9 @@ def normalize(text):
     text = text.replace(";", ":")
     text = text.replace("|", "I")
 
+    # Canonicalize standard chat prefix spacing once OCR has found "[player] : msg".
+    text = re.sub(r"^\[([^\]]+)\]\s*:\s*", r"[\1]: ", text)
+
     return text
 
 def contains_fragment(line, matcher=SYSTEM_MATCHER):

@@ -68,6 +68,11 @@ def test_normalize_whitespace_and_semicolon():
     assert normalize("foo; bar") == "foo: bar"
 
 
+def test_normalize_standard_prefix_spacing():
+    assert normalize("[Foo] : bar baz") == "[Foo]: bar baz"
+    assert normalize("[Foo]:bar baz") == "[Foo]: bar baz"
+
+
 def test_normalize_pipe_to_I():
     assert normalize("| am here") == "I am here"
 

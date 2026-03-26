@@ -29,9 +29,5 @@ The project uses Nuitka to build a standalone executable.
 `powershell -ExecutionPolicy Bypass -File .\build_exe.ps1`
 
 This will:
-1. Install dependencies including Nuitka
-2. Build the executable with Nuitka
-3. Optionally build the Inno Setup installer
-
-## Building Installer
-`& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "installer.iss"`
+1. Install the project and packaging dependencies, including Nuitka
+2. Build the executable with Nuitka from the package-aware launcher

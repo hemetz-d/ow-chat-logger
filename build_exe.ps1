@@ -1,55 +1,52 @@
 <#
 Build script for OW Chat Logger
 
-This script performs a full build:
-  1) Builds the standalone EXE via Nuitka
-  2) Builds the Inno Setup installer (setup_OW Chat Logger.exe)
+This script builds the standalone EXE via Nuitka.
 
 Usage:
-  .\build_exe.ps1           # build exe + installer
-  .\build_exe.ps1 -NoInstaller  # build only exe
+  .\build_exe.ps1
 #>
-
-param(
-  [switch]$NoInstaller
-)
 
 $ErrorActionPreference = "Stop"
 
+function Invoke-Step {
+  param(
+    [string]$Description,
+    [scriptblock]$Action
+  )
+
+  Write-Host $Description -ForegroundColor Yellow
+  & $Action
+  if ($LASTEXITCODE -ne 0) {
+    throw "Command failed during step: $Description"
+  }
+}
+
 Write-Host "=== OW Chat Logger Build ===" -ForegroundColor Cyan
 
-Write-Host "Installing Python dependencies..." -ForegroundColor Yellow
-python -m pip install -r requirements.txt
-python -m pip install "nuitka[onefile]"
+Invoke-Step "Installing packaging dependencies..." { python -m pip install -r requirements.txt }
+Invoke-Step "Installing Nuitka..." { python -m pip install "nuitka[onefile]" }
 
 Write-Host "Cleaning previous build artifacts..." -ForegroundColor Yellow
-Remove-Item -Recurse -Force -ErrorAction SilentlyContinue .\build, .\dist, .\ow-chat-logger.spec, .\setup_OW* 2>$null
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue .\build, .\dist, .\ow-chat-logger.spec 2>$null
+$env:NUITKA_CACHE_DIR = Join-Path (Get-Location) ".nuitka-cache"
+$env:PYTHONPATH = Join-Path (Get-Location) "src"
 
-Write-Host "Building executable with Nuitka..." -ForegroundColor Yellow
-python -m nuitka --onefile --nofollow-imports --output-dir=dist --output-filename=ow-chat-logger.exe src\ow_chat_logger\main.py
-Write-Host "EXE build complete: dist\\ow-chat-logger.exe" -ForegroundColor Green
-
-if (-not $NoInstaller) {
-  Write-Host "Building Inno Setup installer..." -ForegroundColor Yellow
-
-  $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-  if (-not (Test-Path $iscc)) {
-    Write-Error "Inno Setup compiler not found at: $iscc`nPlease install Inno Setup or update the path in this script."
-    exit 1
-  }
-
-  $installerOutput = "setup_OW Chat Logger.exe"
-  if (Test-Path $installerOutput) {
-    try {
-      Remove-Item -Force $installerOutput
-    } catch {
-      Write-Warning "Could not delete existing installer ($installerOutput). It may be in use. Please close it and re-run this script."
-      exit 1
-    }
-  }
-
-  & $iscc "installer.iss"
-  Write-Host "Installer build complete: $installerOutput" -ForegroundColor Green
+Invoke-Step "Building executable with Nuitka..." {
+  python -m nuitka `
+    --onefile `
+    --standalone `
+    --follow-imports `
+    --assume-yes-for-downloads `
+    --include-package=ow_chat_logger `
+    --include-package=easyocr `
+    --include-package=torch `
+    --module-parameter=torch-disable-jit=yes `
+    --enable-plugin=tk-inter `
+    --output-dir=dist `
+    --output-filename=ow-chat-logger.exe `
+    packaging\nuitka_entry.py
 }
+Write-Host "EXE build complete: dist\\ow-chat-logger.exe" -ForegroundColor Green
 
 Write-Host "Build finished." -ForegroundColor Cyan

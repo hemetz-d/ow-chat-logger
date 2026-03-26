@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from ow_chat_logger.buffer import MessageBuffer
 from ow_chat_logger.main import (
     LatestFrameQueue,
+    collect_screenshot_messages,
     _process_finished,
     _process_lines,
     _processing_worker,
@@ -147,3 +148,67 @@ def test_process_lines_does_not_carry_continuation_between_screenshots():
     )
 
     assert chat_logger.log.call_count == 1
+
+
+def test_collect_screenshot_messages_reuses_app_filtering_rules():
+    actual = collect_screenshot_messages(
+        {
+            "team": [
+                "Joined team voice chat - Push to talk",
+                "MiniNinja (Bastion): We need a healer",
+            ],
+            "all": [
+                "7",
+                "[Smokeelite3] : that was embarrassing",
+            ],
+        }
+    )
+
+    assert actual == {
+        "team_lines": [],
+        "all_lines": ["[Smokeelite3]: that was embarrassing"],
+    }
+
+
+def test_collect_screenshot_messages_can_include_hero_lines():
+    actual = collect_screenshot_messages(
+        {
+            "team": ["MiniNinja (Bastion): We need a healer"],
+            "all": [],
+        },
+        include_hero_lines=True,
+    )
+
+    assert actual == {
+        "team_lines": ["MiniNinja (Bastion): We need a healer"],
+        "all_lines": [],
+    }
+
+
+def test_collect_screenshot_messages_strips_trailing_report_suffix():
+    actual = collect_screenshot_messages(
+        {
+            "team": [],
+            "all": ["[Smokeelite3] : offensive message [Report]"],
+        }
+    )
+
+    assert actual == {
+        "team_lines": [],
+        "all_lines": ["[Smokeelite3]: offensive message"],
+    }
+
+
+def test_collect_screenshot_messages_strips_report_suffix_for_hero_lines_when_enabled():
+    actual = collect_screenshot_messages(
+        {
+            "team": ["MiniNinja (Bastion): We need a healer [Report]"],
+            "all": [],
+        },
+        include_hero_lines=True,
+    )
+
+    assert actual == {
+        "team_lines": ["MiniNinja (Bastion): We need a healer"],
+        "all_lines": [],
+    }

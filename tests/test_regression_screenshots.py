@@ -1,5 +1,5 @@
 """
-Screenshot OCR regression: compare pipeline output to committed expected JSON.
+Screenshot OCR regression: compare filtered screenshot extraction output to expected JSON.
 
 Run (slow, loads EasyOCR):
   pip install -e ".[dev]"
@@ -20,6 +20,7 @@ import cv2
 import numpy as np
 import pytest
 
+from ow_chat_logger.main import collect_screenshot_messages
 from ow_chat_logger.pipeline import extract_chat_lines
 
 pytestmark = pytest.mark.ocr
@@ -37,8 +38,8 @@ def _norm_line(s: str) -> str:
     return re.sub(r"\s+", " ", s.strip())
 
 
-def _norm_lines(lines: list[str]) -> list[str]:
-    return [_norm_line(x) for x in lines]
+def _norm_record(record: dict[str, str]) -> dict[str, str]:
+    return {key: _norm_line(value) for key, value in record.items()}
 
 
 def _discover_cases() -> list[tuple[Path, Path]]:
@@ -67,7 +68,6 @@ def test_screenshot_matches_expected(
             "<name>.expected.json (see README in that folder).",
         )
 
-    # Lazy-load EasyOCR only when a real fixture exists (skip above avoids heavy import).
     ocr_engine_session = request.getfixturevalue("ocr_engine_session")
 
     raw = expected_path.read_text(encoding="utf-8")
@@ -80,11 +80,12 @@ def test_screenshot_matches_expected(
     assert want_all is not None, f"{expected_path}: missing all_lines"
 
     rgb = _load_rgb(png_path)
-    actual = extract_chat_lines(rgb, ocr_engine_session, config_overrides=overrides)
+    actual_lines = extract_chat_lines(rgb, ocr_engine_session, config_overrides=overrides)
+    actual = collect_screenshot_messages(actual_lines)
 
-    assert _norm_lines(actual["team"]) == _norm_lines(list(want_team)), (
-        f"team_lines mismatch for {png_path.name} — update {expected_path.name} if intentional."
+    assert [_norm_line(x) for x in actual["team_lines"]] == [_norm_line(x) for x in list(want_team)], (
+        f"team_lines mismatch for {png_path.name} - expected classified output does not match."
     )
-    assert _norm_lines(actual["all"]) == _norm_lines(list(want_all)), (
-        f"all_lines mismatch for {png_path.name} — update {expected_path.name} if intentional."
+    assert [_norm_line(x) for x in actual["all_lines"]] == [_norm_line(x) for x in list(want_all)], (
+        f"all_lines mismatch for {png_path.name} - expected classified output does not match."
     )

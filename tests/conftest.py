@@ -43,5 +43,5 @@ def ocr_engine_session():
         CONFIG["languages"],
         CONFIG["confidence_threshold"],
         CONFIG["text_threshold"],
-        use_gpu=False,
+        use_gpu=True,
     )
