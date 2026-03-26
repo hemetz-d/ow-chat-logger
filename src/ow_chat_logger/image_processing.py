@@ -38,7 +38,7 @@ def clean_mask(mask, config: Optional[Mapping[str, Any]] = None):
         None,
         fx=cfg["scale_factor"],
         fy=cfg["scale_factor"],
-        interpolation=cv2.INTER_NEAREST,
+        interpolation=cv2.INTER_CUBIC,
     )
 
     # Then apply very light horizontal close
