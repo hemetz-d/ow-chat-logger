@@ -5,7 +5,11 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from ow_chat_logger.pipeline import extract_chat_lines, merge_pipeline_config
+from ow_chat_logger.pipeline import (
+    crop_to_screen_region,
+    extract_chat_lines,
+    merge_pipeline_config,
+)
 
 
 def test_merge_pipeline_config_overrides_defaults():
@@ -41,3 +45,26 @@ def test_extract_chat_lines_uses_ocr_per_channel():
     assert ocr.run.call_count == 2
     assert out["team"] == ["team_hi"]
     assert out["all"] == ["all_bye"]
+
+
+def test_crop_to_screen_region_crops_full_screen_image():
+    image = np.arange(1080 * 1920 * 3, dtype=np.uint8).reshape((1080, 1920, 3))
+
+    cropped = crop_to_screen_region(
+        image,
+        {"screen_region": (50, 400, 500, 600)},
+    )
+
+    assert cropped.shape == (600, 500, 3)
+    assert np.array_equal(cropped, image[400:1000, 50:550])
+
+
+def test_crop_to_screen_region_keeps_pre_cropped_image_when_region_does_not_fit():
+    image = np.zeros((600, 500, 3), dtype=np.uint8)
+
+    cropped = crop_to_screen_region(
+        image,
+        {"screen_region": (50, 400, 500, 600)},
+    )
+
+    assert cropped is image

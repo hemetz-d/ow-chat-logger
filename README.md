@@ -31,3 +31,14 @@ The project uses Nuitka to build a standalone executable.
 This will:
 1. Install the project and packaging dependencies, including Nuitka
 2. Build the executable with Nuitka from the package-aware launcher
+
+## OCR Calibration
+Use the supported analyze mode to inspect OCR output for a saved screenshot:
+
+```bash
+ow-chat-logger analyze --image path\to\screenshot.png
+```
+
+Optional flags:
+- `--output-dir <path>` to control where masks and the JSON report are written
+- `--config <path>` to layer JSON config overrides onto the normal runtime config for that analysis run
