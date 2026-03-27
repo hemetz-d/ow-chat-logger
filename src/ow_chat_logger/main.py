@@ -23,9 +23,11 @@ from ow_chat_logger.config import (
     LOG_DIR,
 )
 from ow_chat_logger.deduplication import DuplicateFilter
+from ow_chat_logger.image_processing import clean_mask, create_chat_masks, reconstruct_lines
 from ow_chat_logger.logger import MessageLogger
+from ow_chat_logger.metrics import PerformanceMetrics
 from ow_chat_logger.ocr_engine import OCREngine
-from ow_chat_logger.pipeline import extract_chat_debug_data, extract_chat_lines
+from ow_chat_logger.pipeline import extract_chat_debug_data
 
 REPORT_SUFFIX_RE = re.compile(r"\s*\[\s*report\s*\]\s*$", re.IGNORECASE)
 DISPLAY_CONFIG_KEYS = (
@@ -48,14 +50,16 @@ class LatestFrameQueue:
     def __init__(self, maxsize: int = 2):
         self._queue = Queue(maxsize=maxsize)
 
-    def put_latest(self, item) -> None:
+    def put_latest(self, item) -> int:
+        dropped = 0
         while True:
             try:
                 self._queue.put_nowait(item)
-                return
+                return dropped
             except Full:
                 try:
                     self._queue.get_nowait()
+                    dropped += 1
                 except Empty:
                     continue
 
@@ -72,6 +76,45 @@ class LatestFrameQueue:
 def capture():
     return np.array(
         pyautogui.screenshot(region=CONFIG["screen_region"])
+    )
+
+
+def _resolve_metrics_log_path(path_value: str | None) -> Path:
+    if not path_value:
+        return Path(LOG_DIR) / "performance_metrics.csv"
+
+    path = Path(path_value).expanduser()
+    if path.is_absolute():
+        return path
+    return Path(LOG_DIR) / path
+
+
+def _create_metrics_collector(
+    *,
+    metrics_enabled_override: bool | None = None,
+    metrics_interval_override: float | None = None,
+    metrics_log_path_override: str | None = None,
+) -> PerformanceMetrics | None:
+    enabled = CONFIG.get("metrics_enabled", False)
+    if metrics_enabled_override is not None:
+        enabled = metrics_enabled_override
+    if not enabled:
+        return None
+
+    interval_seconds = CONFIG.get("metrics_interval_seconds", 10.0)
+    if metrics_interval_override is not None:
+        interval_seconds = metrics_interval_override
+
+    log_path = metrics_log_path_override
+    if log_path is None:
+        log_path = CONFIG.get("metrics_log_path")
+
+    return PerformanceMetrics(
+        _resolve_metrics_log_path(log_path),
+        interval_seconds=interval_seconds,
+        capture_interval=CONFIG["capture_interval"],
+        use_gpu=CONFIG.get("use_gpu", True),
+        screen_region=CONFIG["screen_region"],
     )
 
 
@@ -97,6 +140,7 @@ def _process_finished(
     hero_dedup,
     chat_logger,
     hero_logger,
+    metrics=None,
 ):
     """Log one completed buffer message (standard chat or hero line)."""
     record = _normalize_finished_message(finished, chat_type)
@@ -109,11 +153,15 @@ def _process_finished(
         key = f"{record['player']}|{record['msg']}"
         if chat_dedup.is_new(key):
             chat_logger.log(timestamp, record["player"], record["msg"], chat_type)
+            if metrics is not None:
+                metrics.record_logged_message("standard")
 
     elif record["category"] == "hero":
         hero_key = f"{record['player']}|{record['hero']}"
         if hero_dedup.is_new(hero_key):
             hero_logger.log(timestamp, record["player"], record["hero"], chat_type)
+            if metrics is not None:
+                metrics.record_logged_message("hero")
 
 
 def _normalize_finished_message(finished, chat_type):
@@ -162,6 +210,7 @@ def _flush_buffers(
     hero_dedup,
     chat_logger,
     hero_logger,
+    metrics=None,
 ):
     """Emit any messages still held in buffers (e.g. after Ctrl+C)."""
     _process_finished(
@@ -171,6 +220,7 @@ def _flush_buffers(
         hero_dedup=hero_dedup,
         chat_logger=chat_logger,
         hero_logger=hero_logger,
+        metrics=metrics,
     )
     _process_finished(
         all_buffer.flush(),
@@ -179,6 +229,7 @@ def _flush_buffers(
         hero_dedup=hero_dedup,
         chat_logger=chat_logger,
         hero_logger=hero_logger,
+        metrics=metrics,
     )
 
 
@@ -191,6 +242,7 @@ def _process_lines(
     hero_dedup,
     chat_logger,
     hero_logger,
+    metrics=None,
 ) -> None:
     """Process one screenshot's OCR lines as an isolated parsing session."""
     for chat_type in ("team", "all"):
@@ -206,6 +258,7 @@ def _process_lines(
                 hero_dedup=hero_dedup,
                 chat_logger=chat_logger,
                 hero_logger=hero_logger,
+                metrics=metrics,
             )
 
     _flush_buffers(
@@ -215,6 +268,7 @@ def _process_lines(
         hero_dedup=hero_dedup,
         chat_logger=chat_logger,
         hero_logger=hero_logger,
+        metrics=metrics,
     )
 
 
@@ -254,7 +308,58 @@ def _append_collected_record(out, record, *, include_hero_lines: bool) -> None:
             )
 
 
-def _capture_worker(frame_queue, stop_event, error_queue) -> None:
+def _should_run_ocr(mask: np.ndarray, config: dict[str, Any] | None = None) -> bool:
+    cfg = CONFIG if config is None else config
+    min_nonzero = max(int(cfg.get("min_mask_nonzero_pixels_for_ocr", 0)), 0)
+    if min_nonzero == 0:
+        return True
+    return int(np.count_nonzero(mask)) >= min_nonzero
+
+
+def _extract_chat_lines_for_live(
+    screenshot: np.ndarray,
+    ocr: OCREngine,
+    metrics=None,
+) -> dict[str, list[str]]:
+    preprocess_started = time.perf_counter()
+    team_mask_raw, all_mask_raw = create_chat_masks(screenshot, CONFIG)
+    team_mask = clean_mask(team_mask_raw, CONFIG)
+    all_mask = clean_mask(all_mask_raw, CONFIG)
+    preprocess_seconds = time.perf_counter() - preprocess_started
+
+    team_should_run = _should_run_ocr(team_mask, CONFIG)
+    all_should_run = _should_run_ocr(all_mask, CONFIG)
+
+    ocr_started = time.perf_counter()
+    team_results = ocr.run(team_mask) if team_should_run else []
+    all_results = ocr.run(all_mask) if all_should_run else []
+    ocr_seconds = time.perf_counter() - ocr_started
+
+    parse_started = time.perf_counter()
+    lines_by_channel = {
+        "team": reconstruct_lines(team_results, CONFIG),
+        "all": reconstruct_lines(all_results, CONFIG),
+    }
+    parse_seconds = time.perf_counter() - parse_started
+
+    if metrics is not None:
+        metrics.record_processed_frame(
+            preprocess_seconds=preprocess_seconds,
+            ocr_seconds=ocr_seconds,
+            parse_seconds=parse_seconds,
+            total_seconds=preprocess_seconds + ocr_seconds + parse_seconds,
+            team_skipped=not team_should_run,
+            all_skipped=not all_should_run,
+            team_boxes=len(team_results),
+            all_boxes=len(all_results),
+            team_lines=len(lines_by_channel["team"]),
+            all_lines=len(lines_by_channel["all"]),
+        )
+
+    return lines_by_channel
+
+
+def _capture_worker(frame_queue, stop_event, error_queue, *, metrics=None) -> None:
     interval = max(float(CONFIG["capture_interval"]), 0.0)
     next_capture = time.monotonic()
 
@@ -264,7 +369,13 @@ def _capture_worker(frame_queue, stop_event, error_queue) -> None:
             if now < next_capture and stop_event.wait(next_capture - now):
                 break
 
-            frame_queue.put_latest(capture())
+            capture_started = time.perf_counter()
+            screenshot = capture()
+            capture_seconds = time.perf_counter() - capture_started
+            dropped_frames = frame_queue.put_latest(screenshot)
+            if metrics is not None:
+                metrics.record_capture(capture_seconds, dropped_frames=dropped_frames)
+                metrics.flush_if_due()
 
             now = time.monotonic()
             if interval == 0:
@@ -288,6 +399,7 @@ def _processing_worker(
     hero_dedup,
     chat_logger,
     hero_logger,
+    metrics=None,
 ) -> None:
     try:
         while not stop_event.is_set() or not frame_queue.empty():
@@ -299,7 +411,7 @@ def _processing_worker(
             except Empty:
                 continue
 
-            lines_by_channel = extract_chat_lines(screenshot, ocr)
+            lines_by_channel = _extract_chat_lines_for_live(screenshot, ocr, metrics=metrics)
             _process_lines(
                 lines_by_channel,
                 team_buffer,
@@ -308,7 +420,10 @@ def _processing_worker(
                 hero_dedup=hero_dedup,
                 chat_logger=chat_logger,
                 hero_logger=hero_logger,
+                metrics=metrics,
             )
+            if metrics is not None:
+                metrics.flush_if_due()
     except Exception as exc:
         error_queue.put(exc)
         stop_event.set()
@@ -321,6 +436,20 @@ def _close_loggers(*loggers) -> None:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ow-chat-logger")
+    parser.add_argument(
+        "--metrics",
+        action="store_true",
+        help="Enable periodic live runtime metrics logging.",
+    )
+    parser.add_argument(
+        "--metrics-interval",
+        type=float,
+        help="Metrics summary interval in seconds for live logging.",
+    )
+    parser.add_argument(
+        "--metrics-log-path",
+        help="Metrics CSV path. Relative paths are resolved under the app log dir.",
+    )
     subparsers = parser.add_subparsers(dest="command")
 
     analyze = subparsers.add_parser(
@@ -440,7 +569,12 @@ def _run_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_live_logger() -> int:
+def run_live_logger(
+    *,
+    metrics_enabled_override: bool | None = None,
+    metrics_interval_override: float | None = None,
+    metrics_log_path_override: str | None = None,
+) -> int:
     ocr = OCREngine(
         CONFIG["languages"],
         CONFIG["confidence_threshold"],
@@ -459,10 +593,16 @@ def run_live_logger() -> int:
     frame_queue = LatestFrameQueue()
     stop_event = threading.Event()
     error_queue = Queue()
+    metrics = _create_metrics_collector(
+        metrics_enabled_override=metrics_enabled_override,
+        metrics_interval_override=metrics_interval_override,
+        metrics_log_path_override=metrics_log_path_override,
+    )
 
     capture_thread = threading.Thread(
         target=_capture_worker,
         args=(frame_queue, stop_event, error_queue),
+        kwargs={"metrics": metrics},
         name="capture-worker",
         daemon=True,
     )
@@ -477,6 +617,7 @@ def run_live_logger() -> int:
             "hero_dedup": hero_dedup,
             "chat_logger": chat_logger,
             "hero_logger": hero_logger,
+            "metrics": metrics,
         },
         name="processing-worker",
         daemon=True,
@@ -510,9 +651,12 @@ def run_live_logger() -> int:
             hero_dedup=hero_dedup,
             chat_logger=chat_logger,
             hero_logger=hero_logger,
+            metrics=metrics,
         )
         chat_logger.flush()
         hero_logger.flush()
+        if metrics is not None:
+            metrics.close()
         _close_loggers(chat_logger, hero_logger)
     return 0
 
@@ -521,7 +665,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "analyze":
         return _run_analyze(args)
-    return run_live_logger()
+    return run_live_logger(
+        metrics_enabled_override=True if args.metrics else None,
+        metrics_interval_override=args.metrics_interval,
+        metrics_log_path_override=args.metrics_log_path,
+    )
 
 
 if __name__ == "__main__":

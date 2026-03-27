@@ -1,5 +1,6 @@
 numpy
 opencv-python
 easyocr
+psutil
 pyautogui
 pillow

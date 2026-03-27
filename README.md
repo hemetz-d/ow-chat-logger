@@ -1,7 +1,22 @@
-# Run main xd
-TODO
-- release executable for noobs
-- make better in every way
+# ow-chat-logger
+
+OCR-based Overwatch chat logger focused on local runtime capture, parsing, and tuning.
+
+## Run
+
+```bash
+python -m ow_chat_logger
+```
+
+Enable runtime performance metrics:
+
+```bash
+python -m ow_chat_logger --metrics --metrics-interval 5
+```
+
+Optional metrics flags:
+- `--metrics-interval <seconds>` to control summary frequency
+- `--metrics-log-path <path>` to write metrics CSV to a custom file
 
 ## Tests
 
@@ -18,25 +33,12 @@ pytest --run-ocr tests/test_regression_screenshots.py
 ```
 
 See `tests/fixtures/regression/README.md` for the JSON format and `config_overrides`.
-## Building Executable
-The project uses Nuitka to build a standalone executable.
-
-### Prerequisites
-- Python 3.10+
-- Microsoft Visual Studio Build Tools with C++ workload (for Nuitka compilation on Windows)
-
-### Running PowerShell Build
-`powershell -ExecutionPolicy Bypass -File .\build_exe.ps1`
-
-This will:
-1. Install the project and packaging dependencies, including Nuitka
-2. Build the executable with Nuitka from the package-aware launcher
 
 ## OCR Calibration
 Use the supported analyze mode to inspect OCR output for a saved screenshot:
 
 ```bash
-ow-chat-logger analyze --image path\to\screenshot.png
+python -m ow_chat_logger analyze --image path\to\screenshot.png
 ```
 
 Optional flags:

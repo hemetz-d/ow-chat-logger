@@ -40,6 +40,10 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     # OW_CHAT_LOG_DIR environment variable.
     "log_dir": str(Path(os.getenv("APPDATA", Path.home() / ".ow-chat-logger")) / "ow-chat-logger"),
     "capture_interval": 2.0,
+    "metrics_enabled": False,
+    "metrics_interval_seconds": 10.0,
+    "metrics_log_path": "performance_metrics.csv",
+    "min_mask_nonzero_pixels_for_ocr": 24,
     "max_remembered": 2000,
     # If True, try CUDA first; on failure EasyOCR falls back to CPU.
     "use_gpu": True,

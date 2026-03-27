@@ -12,7 +12,11 @@ import pytest
 
 from ow_chat_logger.buffer import MessageBuffer
 from ow_chat_logger.main import (
+    CONFIG as MAIN_CONFIG,
     LatestFrameQueue,
+    _should_run_ocr,
+    _create_metrics_collector,
+    _extract_chat_lines_for_live,
     collect_screenshot_messages,
     main,
     _process_finished,
@@ -90,9 +94,9 @@ def test_process_finished_none_noop():
 def test_latest_frame_queue_drops_oldest_item():
     frame_queue = LatestFrameQueue(maxsize=2)
 
-    frame_queue.put_latest("first")
-    frame_queue.put_latest("second")
-    frame_queue.put_latest("third")
+    assert frame_queue.put_latest("first") == 0
+    assert frame_queue.put_latest("second") == 0
+    assert frame_queue.put_latest("third") == 1
 
     assert frame_queue.get(timeout=0.01) == "second"
     assert frame_queue.get(timeout=0.01) == "third"
@@ -101,11 +105,11 @@ def test_latest_frame_queue_drops_oldest_item():
 def test_processing_worker_drains_queue_after_stop(monkeypatch):
     processed = []
 
-    def fake_extract_chat_lines(screenshot, ocr):
+    def fake_extract_chat_lines(screenshot, ocr, metrics=None):
         processed.append(screenshot)
         return {"team": ["[Alice] : hi"], "all": []}
 
-    monkeypatch.setattr("ow_chat_logger.main.extract_chat_lines", fake_extract_chat_lines)
+    monkeypatch.setattr("ow_chat_logger.main._extract_chat_lines_for_live", fake_extract_chat_lines)
 
     frame_queue = LatestFrameQueue(maxsize=2)
     frame_queue.put_latest("frame-1")
@@ -229,16 +233,37 @@ def test_collect_screenshot_messages_strips_report_suffix_for_hero_lines_when_en
 
 
 def test_main_without_args_dispatches_to_live_logger(monkeypatch):
-    called = []
+    called = {}
 
-    def fake_run_live_logger():
-        called.append("live")
+    def fake_run_live_logger(**kwargs):
+        called.update(kwargs)
         return 7
 
     monkeypatch.setattr("ow_chat_logger.main.run_live_logger", fake_run_live_logger)
 
     assert main([]) == 7
-    assert called == ["live"]
+    assert called == {
+        "metrics_enabled_override": None,
+        "metrics_interval_override": None,
+        "metrics_log_path_override": None,
+    }
+
+
+def test_main_metrics_flags_dispatch_to_live_logger(monkeypatch):
+    called = {}
+
+    def fake_run_live_logger(**kwargs):
+        called.update(kwargs)
+        return 13
+
+    monkeypatch.setattr("ow_chat_logger.main.run_live_logger", fake_run_live_logger)
+
+    assert main(["--metrics", "--metrics-interval", "5", "--metrics-log-path", "perf.csv"]) == 13
+    assert called == {
+        "metrics_enabled_override": True,
+        "metrics_interval_override": 5.0,
+        "metrics_log_path_override": "perf.csv",
+    }
 
 
 def test_main_analyze_dispatches(monkeypatch):
@@ -255,6 +280,112 @@ def test_main_analyze_dispatches(monkeypatch):
 
     assert main(["analyze", "--image", str(image_path)]) == 11
     assert called == [str(image_path)]
+
+
+def test_create_metrics_collector_disabled_by_default():
+    assert _create_metrics_collector() is None
+
+
+def test_should_run_ocr_uses_nonzero_threshold():
+    mask = np.zeros((3, 3), dtype=np.uint8)
+    mask[0, 0] = 255
+    mask[0, 1] = 255
+
+    assert _should_run_ocr(mask, {"min_mask_nonzero_pixels_for_ocr": 2}) is True
+    assert _should_run_ocr(mask, {"min_mask_nonzero_pixels_for_ocr": 3}) is False
+
+
+def test_extract_chat_lines_for_live_records_metrics(monkeypatch):
+    screenshot = np.zeros((2, 2, 3), dtype=np.uint8)
+    recorded = {}
+
+    monkeypatch.setattr(
+        "ow_chat_logger.main.create_chat_masks",
+        lambda image, config: (np.ones((2, 2), dtype=np.uint8), np.ones((2, 2), dtype=np.uint8)),
+    )
+    monkeypatch.setattr("ow_chat_logger.main.clean_mask", lambda mask, config: mask)
+    monkeypatch.setattr("ow_chat_logger.main.reconstruct_lines", lambda results, config: [results[0][1]] if results else [])
+    monkeypatch.setitem(MAIN_CONFIG, "min_mask_nonzero_pixels_for_ocr", 1)
+
+    class FakeOCR:
+        def __init__(self):
+            self.calls = 0
+
+        def run(self, mask):
+            self.calls += 1
+            return [([[0, 0], [1, 0], [1, 1], [0, 1]], f"text-{self.calls}", 0.99)]
+
+    class FakeMetrics:
+        def record_processed_frame(self, **kwargs):
+            recorded.update(kwargs)
+
+    lines = _extract_chat_lines_for_live(screenshot, FakeOCR(), metrics=FakeMetrics())
+
+    assert lines == {"team": ["text-1"], "all": ["text-2"]}
+    assert recorded["team_skipped"] is False
+    assert recorded["all_skipped"] is False
+    assert recorded["team_boxes"] == 1
+    assert recorded["all_boxes"] == 1
+    assert recorded["team_lines"] == 1
+    assert recorded["all_lines"] == 1
+
+
+def test_extract_chat_lines_for_live_skips_ocr_for_nearly_empty_masks(monkeypatch):
+    screenshot = np.zeros((2, 2, 3), dtype=np.uint8)
+
+    monkeypatch.setattr(
+        "ow_chat_logger.main.create_chat_masks",
+        lambda image, config: (
+            np.array([[255, 0], [0, 0]], dtype=np.uint8),
+            np.array([[255, 255], [0, 0]], dtype=np.uint8),
+        ),
+    )
+    monkeypatch.setattr("ow_chat_logger.main.clean_mask", lambda mask, config: mask)
+    monkeypatch.setattr("ow_chat_logger.main.reconstruct_lines", lambda results, config: [result[1] for result in results])
+    monkeypatch.setitem(MAIN_CONFIG, "min_mask_nonzero_pixels_for_ocr", 2)
+
+    class FakeOCR:
+        def __init__(self):
+            self.calls = 0
+
+        def run(self, mask):
+            self.calls += 1
+            return [([[0, 0], [1, 0], [1, 1], [0, 1]], f"text-{self.calls}", 0.99)]
+
+    ocr = FakeOCR()
+    lines = _extract_chat_lines_for_live(screenshot, ocr)
+
+    assert ocr.calls == 1
+    assert lines == {"team": [], "all": ["text-1"]}
+
+
+def test_extract_chat_lines_for_live_records_skip_flags(monkeypatch):
+    screenshot = np.zeros((2, 2, 3), dtype=np.uint8)
+    recorded = {}
+
+    monkeypatch.setattr(
+        "ow_chat_logger.main.create_chat_masks",
+        lambda image, config: (
+            np.array([[255, 0], [0, 0]], dtype=np.uint8),
+            np.array([[255, 255], [0, 0]], dtype=np.uint8),
+        ),
+    )
+    monkeypatch.setattr("ow_chat_logger.main.clean_mask", lambda mask, config: mask)
+    monkeypatch.setattr("ow_chat_logger.main.reconstruct_lines", lambda results, config: [result[1] for result in results])
+    monkeypatch.setitem(MAIN_CONFIG, "min_mask_nonzero_pixels_for_ocr", 2)
+
+    class FakeOCR:
+        def run(self, mask):
+            return [([[0, 0], [1, 0], [1, 1], [0, 1]], "text", 0.99)]
+
+    class FakeMetrics:
+        def record_processed_frame(self, **kwargs):
+            recorded.update(kwargs)
+
+    _extract_chat_lines_for_live(screenshot, FakeOCR(), metrics=FakeMetrics())
+
+    assert recorded["team_skipped"] is True
+    assert recorded["all_skipped"] is False
 
 
 def test_main_analyze_requires_image():
