@@ -15,8 +15,8 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     "screen_region": (50, 400, 500, 600),
     "scale_factor": 3,
     "y_merge_threshold": 18,
-    "confidence_threshold": 0.6,
-    "text_threshold": 0.4,
+    "confidence_threshold": 0.7,
+    "text_threshold": 0.5,
     "min_ocr_box_height": 60,
     "team_hsv_lower": [84, 90, 90],
     "team_hsv_upper": [112, 255, 255],
@@ -28,7 +28,7 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     "metrics_interval_seconds": 10.0,
     "metrics_log_path": "performance_metrics.csv",
     "min_mask_nonzero_pixels_for_ocr": 24,
-    "max_remembered": 2000,
+    "max_remembered": 1000,
     "use_gpu": True,
 }
 
