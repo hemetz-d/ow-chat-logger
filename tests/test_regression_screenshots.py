@@ -42,6 +42,49 @@ def _norm_record(record: dict[str, str]) -> dict[str, str]:
     return {key: _norm_line(value) for key, value in record.items()}
 
 
+def _format_line_list(lines: list[str]) -> str:
+    if not lines:
+        return "  <none>"
+    return "\n".join(f"  - {line}" for line in lines)
+
+
+def _assert_channel_lines_match(
+    *,
+    fixture_name: str,
+    channel_name: str,
+    actual_lines: list[str],
+    expected_lines: list[str],
+) -> None:
+    norm_actual = [_norm_line(x) for x in actual_lines]
+    norm_expected = [_norm_line(x) for x in expected_lines]
+    if norm_actual == norm_expected:
+        return
+
+    missing = [line for line in norm_expected if line not in norm_actual]
+    unexpected = [line for line in norm_actual if line not in norm_expected]
+
+    pytest.fail(
+        "\n".join(
+            [
+                f"{fixture_name} {channel_name} mismatch",
+                "",
+                "Expected:",
+                _format_line_list(norm_expected),
+                "",
+                "Actual:",
+                _format_line_list(norm_actual),
+                "",
+                "Missing:",
+                _format_line_list(missing),
+                "",
+                "Unexpected:",
+                _format_line_list(unexpected),
+            ]
+        ),
+        pytrace=False,
+    )
+
+
 def _discover_cases() -> list[tuple[Path, Path]]:
     if not FIXTURE_DIR.is_dir():
         return []
@@ -56,7 +99,11 @@ def _discover_cases() -> list[tuple[Path, Path]]:
 CASES = _discover_cases()
 
 
-@pytest.mark.parametrize("png_path,expected_path", CASES if CASES else [(None, None)])
+@pytest.mark.parametrize(
+    "png_path,expected_path",
+    CASES if CASES else [(None, None)],
+    ids=[case[0].stem for case in CASES] if CASES else ["no-fixtures"],
+)
 def test_screenshot_matches_expected(
     png_path: Path | None,
     expected_path: Path | None,
@@ -83,9 +130,15 @@ def test_screenshot_matches_expected(
     actual_lines = extract_chat_lines(rgb, ocr_engine_session, config_overrides=overrides)
     actual = collect_screenshot_messages(actual_lines)
 
-    assert [_norm_line(x) for x in actual["team_lines"]] == [_norm_line(x) for x in list(want_team)], (
-        f"team_lines mismatch for {png_path.name} - expected classified output does not match."
+    _assert_channel_lines_match(
+        fixture_name=png_path.name,
+        channel_name="team_lines",
+        actual_lines=actual["team_lines"],
+        expected_lines=list(want_team),
     )
-    assert [_norm_line(x) for x in actual["all_lines"]] == [_norm_line(x) for x in list(want_all)], (
-        f"all_lines mismatch for {png_path.name} - expected classified output does not match."
+    _assert_channel_lines_match(
+        fixture_name=png_path.name,
+        channel_name="all_lines",
+        actual_lines=actual["all_lines"],
+        expected_lines=list(want_all),
     )
