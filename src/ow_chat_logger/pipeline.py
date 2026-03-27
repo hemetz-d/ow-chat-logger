@@ -87,7 +87,15 @@ def extract_chat_debug_data(
         mask = masks[key]
         should_run = True if should_run_ocr is None else should_run_ocr(mask, cfg)
         ocr_skipped[key] = not should_run
-        ocr_results[key] = ocr.run(mask) if should_run else []
+        ocr_results[key] = (
+            ocr.run(
+                mask,
+                confidence_threshold=cfg["confidence_threshold"],
+                text_threshold=cfg["text_threshold"],
+            )
+            if should_run
+            else []
+        )
     ocr_seconds = time.perf_counter() - ocr_started
 
     parse_started = time.perf_counter()

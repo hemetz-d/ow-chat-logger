@@ -23,17 +23,27 @@ class OCREngine:
         except Exception:
             return easyocr.Reader(languages, gpu=False)
 
-    def run(self, mask):
+    def run(self, mask, *, confidence_threshold=None, text_threshold=None):
+        confidence_threshold = (
+            self.confidence_threshold
+            if confidence_threshold is None
+            else confidence_threshold
+        )
+        text_threshold = (
+            self.text_threshold
+            if text_threshold is None
+            else text_threshold
+        )
         results = self.reader.readtext(
             mask,
             detail=1,
             paragraph=False,
-            text_threshold=self.text_threshold,
+            text_threshold=text_threshold,
             allowlist=OCR_ALLOWLIST,
         )
 
         return [
             (bbox, text, conf)
             for (bbox, text, conf) in results
-            if conf > self.confidence_threshold
+            if conf > confidence_threshold
         ]

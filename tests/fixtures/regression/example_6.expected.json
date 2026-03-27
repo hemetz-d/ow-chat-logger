@@ -1,0 +1,16 @@
+{
+  "team_lines": [
+    "[noraATiger]: i dont even speak german, are they toxic?",
+    "[Cipe]: epic but reversed",
+    "[CondorBarge]: prob",
+    "[Flea]: wow thats epci",
+    "[Flea]: (epic but typo="
+  ],
+  "all_lines": [],
+  "config_overrides": {
+    "team_hsv_lower": [84, 90, 90],
+    "team_hsv_upper": [112, 255, 255],
+    "confidence_threshold": 0.6,
+    "text_threshold": 0.4
+  }
+}

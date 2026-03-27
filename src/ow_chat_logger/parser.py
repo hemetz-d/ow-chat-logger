@@ -26,6 +26,7 @@ SYSTEM_PATTERNS = [
     r".*players in channel.*",
     r".*to access voice.*",
     r"channels",
+    r"^.+\([^)]*\)\s+to\s+.+:\s*$",
 ]
 
 SYSTEM_MESSAGES = [
