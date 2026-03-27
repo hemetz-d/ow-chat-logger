@@ -39,6 +39,7 @@ def test_extract_chat_lines_uses_ocr_per_channel():
             "all_hsv_upper": [179, 255, 255],
             "scale_factor": 1,
             "y_merge_threshold": 100,
+            "min_ocr_box_height": 0,
         },
     )
 

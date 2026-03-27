@@ -17,6 +17,7 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     "y_merge_threshold": 18,
     "confidence_threshold": 0.7,
     "text_threshold": 0.5,
+    "min_ocr_box_height": 60,
     "team_hsv_lower": [88, 135, 135],
     "team_hsv_upper": [112, 255, 255],
     "all_hsv_lower": [6, 155, 155],

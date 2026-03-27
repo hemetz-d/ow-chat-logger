@@ -88,6 +88,12 @@ def reconstruct_lines(results, config: Optional[Mapping[str, Any]] = None):
     merged = []
     for line in lines:
         line.sort(key=lambda x: x[0][0][0])
+        heights = []
+        for bbox, _ in line:
+            ys = [float(point[1]) for point in bbox]
+            heights.append(max(ys) - min(ys))
+        if heights and max(heights) < cfg.get("min_ocr_box_height", 60):
+            continue
         merged.append(" ".join(t for _, t in line))
 
     return merged
