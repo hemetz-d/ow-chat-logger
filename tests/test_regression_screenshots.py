@@ -20,7 +20,7 @@ import cv2
 import numpy as np
 import pytest
 
-from ow_chat_logger.main import collect_screenshot_messages
+from ow_chat_logger.message_processing import collect_screenshot_messages
 from ow_chat_logger.pipeline import extract_chat_lines
 
 pytestmark = pytest.mark.ocr

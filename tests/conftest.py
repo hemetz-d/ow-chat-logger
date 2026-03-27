@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -45,3 +46,13 @@ def ocr_engine_session():
         CONFIG["text_threshold"],
         use_gpu=True,
     )
+
+
+@pytest.fixture
+def local_tmp_dir():
+    def factory(name: str) -> Path:
+        path = _TEST_LOG / f"{name}-{uuid4().hex}"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    return factory

@@ -1,11 +1,9 @@
-"""Shared OCR pipeline: screenshot RGB -> team / all chat line lists.
-
-Used by regression tests and optional tooling; mirrors ``main`` loop logic.
-"""
+"""Shared OCR pipeline: screenshot RGB -> team / all chat line lists."""
 
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping, Optional
+import time
+from typing import Any, Callable, Dict, Mapping, Optional
 
 import numpy as np
 
@@ -58,6 +56,7 @@ def extract_chat_debug_data(
     ocr: OCREngine,
     *,
     config_overrides: Optional[Mapping[str, Any]] = None,
+    should_run_ocr: Optional[Callable[[np.ndarray, Mapping[str, Any]], bool]] = None,
 ) -> dict[str, Any]:
     """Run masks + OCR + reconstruction and return intermediate debug data.
 
@@ -73,23 +72,43 @@ def extract_chat_debug_data(
     cfg = merge_pipeline_config(config_overrides)
     rgb_image = crop_to_screen_region(rgb_image, config_overrides)
 
+    preprocess_started = time.perf_counter()
     blue_mask, orange_mask = create_chat_masks(rgb_image, cfg)
-    out: dict[str, list[str]] = {}
-    masks: dict[str, np.ndarray] = {}
+    masks = {
+        "team": clean_mask(blue_mask, cfg),
+        "all": clean_mask(orange_mask, cfg),
+    }
+    preprocess_seconds = time.perf_counter() - preprocess_started
 
-    for mask, key in [
-        (clean_mask(blue_mask, cfg), "team"),
-        (clean_mask(orange_mask, cfg), "all"),
-    ]:
-        masks[key] = mask
-        results = ocr.run(mask)
-        out[key] = reconstruct_lines(results, cfg)
+    ocr_started = time.perf_counter()
+    ocr_results: dict[str, list[Any]] = {}
+    ocr_skipped: dict[str, bool] = {}
+    for key in ("team", "all"):
+        mask = masks[key]
+        should_run = True if should_run_ocr is None else should_run_ocr(mask, cfg)
+        ocr_skipped[key] = not should_run
+        ocr_results[key] = ocr.run(mask) if should_run else []
+    ocr_seconds = time.perf_counter() - ocr_started
+
+    parse_started = time.perf_counter()
+    out = {
+        key: reconstruct_lines(ocr_results[key], cfg)
+        for key in ("team", "all")
+    }
+    parse_seconds = time.perf_counter() - parse_started
 
     return {
         "config": cfg,
         "cropped_rgb_image": rgb_image,
         "masks": masks,
+        "ocr_results": ocr_results,
+        "ocr_skipped": ocr_skipped,
         "raw_lines": out,
+        "timings": {
+            "preprocess_seconds": preprocess_seconds,
+            "ocr_seconds": ocr_seconds,
+            "parse_seconds": parse_seconds,
+        },
     }
 
 

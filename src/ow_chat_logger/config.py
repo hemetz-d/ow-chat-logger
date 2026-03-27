@@ -1,43 +1,26 @@
-"""Configuration defaults and user override loading.
+"""Configuration defaults and lazy user override loading."""
 
-This module provides:
-- CONFIG: merged default + user config file values
-- LOG_DIR: base folder for logs & snapshots
-- CHAT_LOG / HERO_LOG / SNAP_DIR: derived paths
-
-User config file (JSON) is loaded from one of these (in order):
-1) OW_CHAT_LOGGER_CONFIG environment variable
-2) %APPDATA%\\ow-chat-logger\\config.json (Windows)
-3) ~/.ow-chat-logger/config.json (Unix fallback)
-
-User config can override any CONFIG key, including "log_dir".
-"""
+from __future__ import annotations
 
 import json
 import os
 import sys
+from collections.abc import Iterator, MutableMapping
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any
 
-# ---------- defaults ----------
-_DEFAULT_CONFIG: Dict[str, Any] = {
-    "languages": ['en', 'de'],
+_DEFAULT_CONFIG: dict[str, Any] = {
+    "languages": ["en", "de"],
     "screen_region": (50, 400, 500, 600),
     "scale_factor": 3,
     "y_merge_threshold": 18,
     "confidence_threshold": 0.7,
     "text_threshold": 0.5,
-
-    # HSV bounds for chat text highlights (OpenCV HSV)
-    # "team" (blue) and "all" (orange) chat colors in Overwatch
     "team_hsv_lower": [88, 135, 135],
     "team_hsv_upper": [112, 255, 255],
     "all_hsv_lower": [6, 155, 155],
     "all_hsv_upper": [20, 255, 255],
-
-    # Default workspace for logs and snapshots.
-    # This is overridden by a user config file or by the
-    # OW_CHAT_LOG_DIR environment variable.
     "log_dir": str(Path(os.getenv("APPDATA", Path.home() / ".ow-chat-logger")) / "ow-chat-logger"),
     "capture_interval": 2.0,
     "metrics_enabled": False,
@@ -45,41 +28,74 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     "metrics_log_path": "performance_metrics.csv",
     "min_mask_nonzero_pixels_for_ocr": 24,
     "max_remembered": 2000,
-    # If True, try CUDA first; on failure EasyOCR falls back to CPU.
     "use_gpu": True,
 }
 
 IGNORED_SENDERS = {"team", "match"}
 DEBUG_LEVEL = 2
 
+_cached_config: dict[str, Any] | None = None
+_cached_paths: "AppPaths | None" = None
+
+
+@dataclass(frozen=True)
+class AppPaths:
+    log_dir: Path
+    chat_log: Path
+    hero_log: Path
+    crash_log: Path
+    snap_dir: Path
+
+
+class LazyConfig(MutableMapping[str, Any]):
+    def _data(self) -> dict[str, Any]:
+        return load_config()
+
+    def __getitem__(self, key: str) -> Any:
+        return self._data()[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self._data()[key] = value
+        reset_paths()
+
+    def __delitem__(self, key: str) -> None:
+        del self._data()[key]
+        reset_paths()
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._data())
+
+    def __len__(self) -> int:
+        return len(self._data())
+
+    def __repr__(self) -> str:
+        return repr(self._data())
+
 
 def _get_user_config_path() -> Path:
-    # Explicit override
     env_path = os.getenv("OW_CHAT_LOGGER_CONFIG")
     if env_path:
         return Path(env_path)
 
-    # Windows common config location
     appdata = os.getenv("APPDATA")
     if appdata:
         return Path(appdata) / "ow-chat-logger" / "config.json"
 
-    # Fallback (Unix-style)
     return Path.home() / ".ow-chat-logger" / "config.json"
 
 
-def resolve_log_dir(path: Union[str, Path]) -> Path:
+def resolve_log_dir(path: str | Path) -> Path:
     """Expand %VAR% (e.g. %APPDATA%) and user home (~) in a log_dir string."""
     return Path(os.path.expandvars(str(path))).expanduser()
 
 
-def _load_user_config() -> Dict[str, Any]:
+def _load_user_config() -> dict[str, Any]:
     cfg_path = _get_user_config_path()
     if not cfg_path.exists():
         return {}
 
     try:
-        return json.loads(cfg_path.read_text(encoding="utf-8"))
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
     except Exception as exc:
         print(
             f"Warning: could not load user config from {cfg_path}: {exc}",
@@ -87,27 +103,62 @@ def _load_user_config() -> Dict[str, Any]:
         )
         return {}
 
+    if not isinstance(data, dict):
+        print(
+            f"Warning: expected JSON object in user config {cfg_path}",
+            file=sys.stderr,
+        )
+        return {}
+    return data
 
-# Merge defaults + user config (user wins)
-CONFIG: Dict[str, Any] = {**_DEFAULT_CONFIG, **_load_user_config()}
 
-# Allow direct env var override for log dir
-if (env_dir := os.getenv("OW_CHAT_LOG_DIR")):
-    CONFIG["log_dir"] = env_dir
+def load_config(*, reload: bool = False) -> dict[str, Any]:
+    global _cached_config
+    if _cached_config is not None and not reload:
+        return _cached_config
 
-# Expand %APPDATA% and similar in JSON-provided paths (Windows / cross-platform)
-if isinstance(CONFIG.get("log_dir"), str):
-    CONFIG["log_dir"] = os.path.expandvars(CONFIG["log_dir"])
+    config = {**_DEFAULT_CONFIG, **_load_user_config()}
 
-# Ensure folders exist
-LOG_DIR = resolve_log_dir(CONFIG["log_dir"])
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+    if env_dir := os.getenv("OW_CHAT_LOG_DIR"):
+        config["log_dir"] = env_dir
 
-CHAT_LOG = str(LOG_DIR / "chat_log.csv")
-HERO_LOG = str(LOG_DIR / "hero_log.csv")
+    if isinstance(config.get("log_dir"), str):
+        config["log_dir"] = os.path.expandvars(config["log_dir"])
 
-# Crash / debug logging
-CRASH_LOG = str(LOG_DIR / "crash.log")
+    _cached_config = config
+    return _cached_config
 
-SNAP_DIR = str(LOG_DIR / "debug_snaps")
-Path(SNAP_DIR).mkdir(parents=True, exist_ok=True)
+
+def reset_config() -> None:
+    global _cached_config
+    _cached_config = None
+    reset_paths()
+
+
+def get_app_paths(*, ensure_exists: bool = True) -> AppPaths:
+    global _cached_paths
+    if _cached_paths is not None:
+        return _cached_paths
+
+    config = load_config()
+    log_dir = resolve_log_dir(config["log_dir"])
+    paths = AppPaths(
+        log_dir=log_dir,
+        chat_log=log_dir / "chat_log.csv",
+        hero_log=log_dir / "hero_log.csv",
+        crash_log=log_dir / "crash.log",
+        snap_dir=log_dir / "debug_snaps",
+    )
+    if ensure_exists:
+        paths.log_dir.mkdir(parents=True, exist_ok=True)
+        paths.snap_dir.mkdir(parents=True, exist_ok=True)
+    _cached_paths = paths
+    return _cached_paths
+
+
+def reset_paths() -> None:
+    global _cached_paths
+    _cached_paths = None
+
+
+CONFIG = LazyConfig()
