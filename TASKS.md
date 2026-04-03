@@ -12,9 +12,9 @@ State: `open` | `in-progress` | `review` | `done`
 
 ### T-01 · Y-anchor drift in `reconstruct_lines`
 - **Severity:** bug
-- **State:** `review`
+- **State:** `done`
 - **File:** `src/ow_chat_logger/image_processing.py:110`
-- **Completed:** —
+- **Completed:** 2026-04-03
 
 `current_y` is set to the first box's Y when a new group starts and is never updated while accumulating that group. With `y_merge_threshold=18`, boxes at y=`[0, 15, 30]` produce two groups instead of one: the box at y=30 is compared against y=0 (diff=30 > 18) rather than the most-recent anchor y=15. Real-world OCR on upscaled text regularly returns boxes with gradual Y drift, causing premature line splits.
 
@@ -204,7 +204,7 @@ Resolved by the OCR modularisation. `base.py` defines `OCRBackend` (Protocol) an
 
 | ID | Title | Severity | State | Completed |
 |----|-------|----------|-------|-----------|
-| T-01 | Y-anchor drift in `reconstruct_lines` | bug | `review` | — |
+| T-01 | Y-anchor drift in `reconstruct_lines` | bug | `done` | 2026-04-03 |
 | T-02 | `HERO_PATTERN` too greedy | bug | `open` | — |
 | T-03 | `r"channels"` bare substring | bug | `open` | — |
 | T-04 | `LazyConfig` write not thread-safe | structural | `open` | — |
