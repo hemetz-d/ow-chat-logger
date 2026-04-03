@@ -117,6 +117,7 @@ def reconstruct_lines(results, config: Optional[Mapping[str, Any]] = None):
 
         if abs(y - current_y) < cfg["y_merge_threshold"]:
             current.append((bbox, text))
+            current_y = y
         else:
             lines.append(current)
             current = [(bbox, text)]

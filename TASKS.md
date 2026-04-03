@@ -12,7 +12,7 @@ State: `open` | `in-progress` | `review` | `done`
 
 ### T-01 · Y-anchor drift in `reconstruct_lines`
 - **Severity:** bug
-- **State:** `open`
+- **State:** `review`
 - **File:** `src/ow_chat_logger/image_processing.py:110`
 - **Completed:** —
 
@@ -204,7 +204,7 @@ Resolved by the OCR modularisation. `base.py` defines `OCRBackend` (Protocol) an
 
 | ID | Title | Severity | State | Completed |
 |----|-------|----------|-------|-----------|
-| T-01 | Y-anchor drift in `reconstruct_lines` | bug | `open` | — |
+| T-01 | Y-anchor drift in `reconstruct_lines` | bug | `review` | — |
 | T-02 | `HERO_PATTERN` too greedy | bug | `open` | — |
 | T-03 | `r"channels"` bare substring | bug | `open` | — |
 | T-04 | `LazyConfig` write not thread-safe | structural | `open` | — |

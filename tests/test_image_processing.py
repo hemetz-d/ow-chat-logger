@@ -57,6 +57,22 @@ def test_reconstruct_lines_keeps_line_at_or_above_min_height():
     assert lines == ["[Alice]: hello", "epci"]
 
 
+def test_reconstruct_lines_sliding_y_anchor():
+    """Boxes at y=[0,15,30] with threshold=18 should merge into one line.
+
+    With a fixed group-start anchor, y=30 is compared against y=0 (diff=30>18)
+    and splits incorrectly. A sliding anchor compares y=30 against y=15 (diff=15<18).
+    """
+    cfg = {"y_merge_threshold": 18, "min_ocr_box_height": 0}
+    results = [
+        (_box(0, 0, 10, 10), "a", 0.9),
+        (_box(20, 15, 10, 10), "b", 0.9),
+        (_box(40, 30, 10, 10), "c", 0.9),
+    ]
+    lines = reconstruct_lines(results, cfg)
+    assert lines == ["a b c"]
+
+
 def test_remove_small_components_drops_tiny_islands():
     mask = np.zeros((8, 8), dtype=np.uint8)
     mask[0, 0] = 255
