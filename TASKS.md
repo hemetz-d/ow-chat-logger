@@ -27,6 +27,11 @@ State: `open` | `in-progress` | `review` | `done`
 | T-13 | `_benchmark_case` redundantly re-resolves profile per fixture | structural | `open` | — |
 | T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | `open` | — |
 | T-15 | Trailing `l:` in player prefix should normalize to closing bracket | bug | `done` | 2026-04-03 |
+| T-16 | Capital `I` closing-bracket OCR suffix not covered by T-15 | bug | `open` | — |
+| T-17 | T-15 false positive: legitimate names ending in `l` stripped when bracket is missing | bug | `deferred` | — |
+| T-18 | `\|` → `I` substitution in `normalize()` corrupts `l`-as-pipe in message content | bug | `open` | — |
+| T-19 | Multi-error lines (no bracket + spaces in name + `l:` suffix) fall through to continuation | bug | `open` | — |
+| T-20 | Save debug screenshot when a parsing anomaly is detected | structural | `open` | — |
 
 
 ---
@@ -72,6 +77,64 @@ The pattern `r"channels"` in `SYSTEM_PATTERNS` is a bare substring match with no
 **Fix direction:** Replace with a more specific pattern scoped to the actual system message context, or remove it and rely solely on the Aho-Corasick fragment matcher which already handles the longer form.
 
 **Test surface:** `tests/test_parser.py` — add a case where a player message contains "channels" and is correctly classified as `standard`, not `system`.
+
+---
+
+### T-16 · Capital `I` closing-bracket OCR suffix not covered by T-15
+- **Severity:** bug
+- **State:** `open`
+- **File:** `src/ow_chat_logger/parser.py:121`, `src/ow_chat_logger/message_processing.py:24`
+- **Completed:** —
+
+OCR sometimes reads the closing bracket `]` as a capital `I` rather than a lowercase `l`. T-15 fixed the lowercase-`l` variant (`[ZANGETSUI:` should normalize to `[ZANGETSU]:`), but the detection condition in `classify_line` only checks `endswith("l")` and the strip in `normalize_finished_message` only removes lowercase `l`. The capital-`I` case silently passes through with the wrong player name.
+
+**Fix direction:** Extend both the flag condition in `parser.py` (`endswith("l") or endswith("I")`) and the strip in `message_processing.py` to cover capital `I` as a second OCR variant of `]`. Consider renaming `ocr_fix_closing_bracket_l` to `ocr_fix_closing_bracket` or accepting a captured character to strip, to avoid proliferating booleans.
+
+**Test surface:** `tests/test_message_processing.py` — add a regression case where OCR yields a player token with trailing capital `I` (e.g. `[ZANGETSUI:`) and the final normalized line becomes `[ZANGETSU]: ...`.
+
+---
+
+### T-17 · T-15 fix creates false positive for legitimate player names ending in `l`
+- **Severity:** bug
+- **State:** `deferred`
+- **File:** `src/ow_chat_logger/message_processing.py:24`, `src/ow_chat_logger/parser.py:121`
+- **Completed:** —
+
+The `ocr_fix_closing_bracket_l` guard fires whenever the closing bracket is missing AND the player group ends in `l`. This is also true for players whose names legitimately end in `l` (e.g. `Daniel`, `Nathaniel`, `Michael`). If `[Daniel]` is OCR'd as `[Daniel:` (missing `]`), MISSING_CLOSING_BRACKET_PATTERN matches with `player="Daniel"`, the flag is set, and T-15 strips the `l` — producing the player name `Danie`.
+
+**Current stance:** The tradeoff is accepted. The T-15 heuristic is correct far more often than it fires falsely (the `l`-terminal OCR artifact is a common pattern; player names ending in `l` with a simultaneously missing closing bracket are rare). This task is deferred until a reliable disambiguation approach is identified — e.g. character-level OCR confidence from the backend, or a corpus-based check against known player name patterns.
+
+**Fix direction (when revisited):** A safer guard would use OCR confidence on the terminal character to limit the strip to genuinely low-confidence `l` tokens. Alternatively, constrain to cases where the preceding character is uppercase or a digit (consistent with the bracket-misread context). Do not add a minimum-length check alone — it doesn't help for names like `Nathaniel`.
+
+**Test surface:** `tests/test_message_processing.py` — once a fix direction is chosen, add cases where `[Daniel]:` (bracket correctly present) is not mutated, and `[Daniel:` (bracket missing) is handled without silently mangling the name.
+
+---
+
+### T-18 · `|` → `I` substitution in `normalize()` corrupts lowercase `l` in message content
+- **Severity:** bug
+- **State:** `open`
+- **File:** `src/ow_chat_logger/parser.py:79`
+- **Completed:** —
+
+`normalize()` applies `text.replace("|", "I")` to the entire raw OCR string before any structural parsing. The intent is to repair player-bracket OCR artifacts where `|` appears in place of `I` in a name. However, Windows OCR also reads lowercase `l` as `|` in certain font/contrast situations. The substitution then produces a capital `I` in message content — e.g. `"lol"` → OCR reads first `l` as `|` → normalize gives `"Iol"` — observed in output as `it's always others fault Iol`.
+
+**Fix direction:** Move the `|` → `I` substitution out of the pre-parse `normalize()` and apply it only to the extracted player token, not to the message body. After structural parsing (STANDARD_PATTERN or variants) splits player from message, apply character-substitution repairs to `player` only. The message body should receive no bracket-repair substitutions.
+
+**Test surface:** `tests/test_parser.py` — add a case where the raw OCR line contains `|` in the message body (e.g. `[A7X]: l|l`) and the normalized output preserves the pipe or restores `l`, rather than emitting capital `I`.
+
+---
+
+### T-19 · Multi-error OCR lines (missing bracket + spaces in name + `l:` suffix) fall through to continuation
+- **Severity:** bug
+- **State:** `open`
+- **File:** `src/ow_chat_logger/parser.py:113`
+- **Completed:** —
+
+When OCR produces simultaneous errors — missing opening bracket, word-splitting inside the player name, and `]` → `l` — no existing pattern matches. Example: `[A7X]: boris more healing pls` → OCR → `A: 7 X l: boris more healing pls`. MISSING_CLOSING_BRACKET_PATTERN requires `[` at the start. MISSING_OPENING_BRACKET_PATTERN requires a literal `\]` in the player position. The spaced-name variant `A: 7 X` hits neither. The line falls through to `continuation`, where it is silently appended to the previous message or discarded.
+
+**Fix direction:** Add a dedicated pattern for the "no-bracket, whitespace-in-name, `l:`-terminated prefix" form, or generalize MISSING_OPENING_BRACKET_PATTERN to tolerate spaces and `l` in place of `\]`. Keep the match narrow: require the player token to look like an alphanumeric tag (no punctuation other than the suffix) and the suffix to be `l:` or `I:`. Guard against false positives by length-bounding the matched player fragment.
+
+**Test surface:** `tests/test_parser.py` — add a case for `A: 7 X l: boris more healing pls` being classified as `standard` with player `A7X` and message `boris more healing pls`, rather than `continuation`.
 
 ---
 
@@ -172,6 +235,20 @@ After `processing_thread.join(timeout=1.0)`, `flush_buffers` runs immediately on
 **Fix direction:** Pass the already-resolved `ResolvedOCRProfile` into `_benchmark_case` as a parameter rather than re-resolving it internally.
 
 **Test surface:** `tests/test_benchmark.py` — verify the case function uses the passed profile without re-resolving.
+
+---
+
+### T-20 · Save debug screenshot when a parsing anomaly is detected
+- **Severity:** structural
+- **State:** `open`
+- **File:** `src/ow_chat_logger/pipeline.py`, `src/ow_chat_logger/live_runtime.py`
+- **Completed:** —
+
+When the OCR pipeline produces a suspicious result — e.g. a line falls through to `continuation` instead of matching a standard pattern, a player name is stripped by the `ocr_fix_closing_bracket_l` heuristic, or an empty OCR result is returned for a non-blank mask — there is currently no capture of the frame that caused it. Diagnosing these cases requires reproducing the exact screen state, which is often impossible after the fact.
+
+**Fix direction:** Define an anomaly predicate (callable, configurable) that receives the `extract_chat_debug_data` return dict and returns `True` when the frame is considered anomalous. When triggered, save the cropped RGB image (and optionally the team/all masks) to a configurable directory (e.g. `debug_screenshots/`) with a timestamp filename. Wire the predicate into the live runtime loop after `extract_chat_lines`. Keep the save path and the predicate out of the hot path when not triggered.
+
+**Test surface:** `tests/test_pipeline.py` — add a test that invokes the anomaly predicate with a synthetic debug dict containing a `continuation`-only parse result and confirms a file is written to a temp directory.
 
 ---
 
