@@ -25,6 +25,12 @@ open  -->  in-progress  -->  review  -->  done
 
 ### 1. Select
 
+Pull the latest changes from the remote before selecting a task:
+
+```bash
+git pull
+```
+
 Pick the next task from `TASKS.md`. Priority order by default:
 
 1. **bug** — correctness problems
