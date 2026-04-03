@@ -38,7 +38,6 @@ SYSTEM_PATTERNS = [
     r".*player in channel.*",
     r".*players in channel.*",
     r".*to access voice.*",
-    r"channels",
 ]
 
 SYSTEM_MESSAGES = [
