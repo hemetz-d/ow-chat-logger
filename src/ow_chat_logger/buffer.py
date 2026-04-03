@@ -40,7 +40,7 @@ class MessageBuffer:
             "hero": classification["hero"],
             "msg": classification["msg"],
             "category": category,
-            "ocr_fix_closing_bracket_l": classification.get("ocr_fix_closing_bracket_l", False),
+            "ocr_fix_closing_bracket": classification.get("ocr_fix_closing_bracket", False),
         }
 
         return finished

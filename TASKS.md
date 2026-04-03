@@ -27,7 +27,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-13 | `_benchmark_case` redundantly re-resolves profile per fixture | structural | 🔴 `open` | — |
 | T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🔴 `open` | — |
 | T-15 | Trailing `l:` in player prefix should normalize to closing bracket | bug | 🟢 `done` | 2026-04-03 |
-| T-16 | Capital `I` closing-bracket OCR suffix not covered by T-15 | bug | 🔴 `open` | — |
+| T-16 | Capital `I` closing-bracket OCR suffix not covered by T-15 | bug | 🟢 `done` | 2026-04-03 |
 | T-17 | T-15 false positive: legitimate names ending in `l` stripped when bracket is missing | bug | ⚫ `deferred` | — |
 | T-18 | `\|` → `I` substitution in `normalize()` corrupts `l`-as-pipe in message content | bug | 🔴 `open` | — |
 | T-19 | Multi-error lines (no bracket + spaces in name + `l:` suffix) fall through to continuation | bug | 🔴 `open` | — |
@@ -83,9 +83,9 @@ The pattern `r"channels"` in `SYSTEM_PATTERNS` is a bare substring match with no
 
 ### T-16 · Capital `I` closing-bracket OCR suffix not covered by T-15
 - **Severity:** bug
-- **State:** 🔴 `open`
+- **State:** 🟢 `done`
 - **File:** `src/ow_chat_logger/parser.py:121`, `src/ow_chat_logger/message_processing.py:24`
-- **Completed:** —
+- **Completed:** 2026-04-03
 
 OCR sometimes reads the closing bracket `]` as a capital `I` rather than a lowercase `l`. T-15 fixed the lowercase-`l` variant (`[ZANGETSUI:` should normalize to `[ZANGETSU]:`), but the detection condition in `classify_line` only checks `endswith("l")` and the strip in `normalize_finished_message` only removes lowercase `l`. The capital-`I` case silently passes through with the wrong player name.
 
