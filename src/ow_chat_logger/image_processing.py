@@ -98,19 +98,24 @@ def clean_mask(mask, config: Optional[Mapping[str, Any]] = None):
 #     )
 #     return mask
 
+def _bbox_center_y(bbox) -> float:
+    ys = [point[1] for point in bbox]
+    return (min(ys) + max(ys)) / 2.0
+
+
 def reconstruct_lines(results, config: Optional[Mapping[str, Any]] = None):
     cfg = _cfg(config)
     if not results:
         return []
 
-    results.sort(key=lambda x: x[0][0][1])
+    results.sort(key=lambda x: _bbox_center_y(x[0]))
 
     lines = []
     current = []
     current_y = None
 
     for bbox, text, conf in results:
-        y = bbox[0][1]
+        y = _bbox_center_y(bbox)
 
         if current_y is None:
             current_y = y
