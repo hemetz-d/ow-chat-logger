@@ -160,6 +160,21 @@ def test_collect_screenshot_messages_fixes_trailing_l_in_player_prefix():
     }
 
 
+def test_collect_screenshot_messages_fixes_trailing_capital_I_in_player_prefix():
+    # OCR reads ']' as capital 'I': "[ZANGETSUI: hello" → "[ZANGETSU]: hello"
+    actual = collect_screenshot_messages(
+        {
+            "team": ["[ZANGETSUI: hello"],
+            "all": [],
+        }
+    )
+
+    assert actual == {
+        "team_lines": ["[ZANGETSU]: hello"],
+        "all_lines": [],
+    }
+
+
 def test_collect_screenshot_messages_strips_report_suffix_for_hero_lines_when_enabled():
     actual = collect_screenshot_messages(
         {
