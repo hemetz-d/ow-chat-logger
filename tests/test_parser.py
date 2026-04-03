@@ -81,6 +81,27 @@ def test_classify_hero():
     assert r["msg"] == "hello"
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        "lol (you wish)",                      # parenthetical in plain text — no colon after )
+        "someone joined (the server)",          # partial system-like text — no colon after )
+    ],
+)
+def test_hero_pattern_not_triggered_without_colon(line):
+    """HERO_PATTERN must not match lines where no colon follows the closing paren."""
+    r = classify_line(line)
+    assert r["category"] != "hero"
+
+
+def test_hero_pattern_not_triggered_for_bracket_prefixed_line():
+    """A standard-format line that contains parentheses must not be promoted to hero."""
+    r = classify_line("[A7X]: great game (nice plays)")
+    assert r["category"] == "standard"
+    assert r["player"] == "A7X"
+    assert "great game" in r["msg"]
+
+
 def test_classify_continuation():
     r = classify_line("this is wrapped text")
     assert r["category"] == "continuation"
