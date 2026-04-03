@@ -17,6 +17,7 @@ def test_main_without_args_dispatches_to_live_logger(monkeypatch):
         "metrics_enabled_override": None,
         "metrics_interval_override": None,
         "metrics_log_path_override": None,
+        "ocr_profile_override": None,
     }
 
 
@@ -34,6 +35,7 @@ def test_main_metrics_flags_dispatch_to_live_logger(monkeypatch):
         "metrics_enabled_override": True,
         "metrics_interval_override": 5.0,
         "metrics_log_path_override": "perf.csv",
+        "ocr_profile_override": None,
     }
 
 
@@ -51,6 +53,19 @@ def test_main_analyze_dispatches(monkeypatch, local_tmp_dir):
 
     assert main(["analyze", "--image", str(image_path)]) == 11
     assert called == [str(image_path)]
+
+
+def test_main_benchmark_dispatches(monkeypatch):
+    called = []
+
+    def fake_run_benchmark(args):
+        called.append(args.profiles)
+        return 17
+
+    monkeypatch.setattr("ow_chat_logger.main.run_benchmark", fake_run_benchmark)
+
+    assert main(["benchmark", "--profiles", "windows_default", "easyocr_master_baseline"]) == 17
+    assert called == [["windows_default", "easyocr_master_baseline"]]
 
 
 def test_main_analyze_requires_image():

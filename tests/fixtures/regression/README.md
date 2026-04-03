@@ -5,7 +5,7 @@ Add **pairs** of files in this folder:
 | File | Purpose |
 |------|--------|
 | `my_sample.png` | Full screenshot (or cropped chat region) in **RGB** when saved — use PNG. |
-| `my_sample.expected.json` | Expected classified chat lines after masks + EasyOCR + parsing/filtering. |
+| `my_sample.expected.json` | Expected classified chat lines after masks + OCR + parsing/filtering. |
 
 ## Expected JSON format
 
@@ -19,8 +19,6 @@ Add **pairs** of files in this folder:
     "[Other] : all chat line"
   ],
   "config_overrides": {
-    "confidence_threshold": 0.7,
-    "text_threshold": 0.5,
     "scale_factor": 3,
     "y_merge_threshold": 18,
     "team_hsv_lower": [88, 135, 135],
@@ -43,7 +41,14 @@ pytest --run-ocr tests/test_regression_screenshots.py
 
 Without `--run-ocr`, OCR tests are skipped.
 
+To run the same fixture set against a specific OCR profile:
+
+```bash
+pytest --run-ocr --ocr-profile easyocr_master_baseline tests/test_regression_screenshots.py
+```
+
 ## Notes
 
 - These tests intentionally reuse the app's parsing/filtering code, so app changes are reflected automatically.
 - Leading/trailing whitespace and repeated spaces are normalized in assertions.
+- Fixture `config_overrides` stay screenshot-specific and engine-agnostic; profile-specific tuning belongs in app config under `ocr.profiles`.

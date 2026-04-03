@@ -1,4 +1,5 @@
 import threading
+from pathlib import Path
 from queue import Queue
 from unittest.mock import MagicMock
 
@@ -9,8 +10,10 @@ from ow_chat_logger.config import CONFIG
 from ow_chat_logger.live_runtime import (
     LatestFrameQueue,
     create_metrics_collector,
+    default_metrics_log_name,
     extract_chat_lines_for_live,
     processing_worker,
+    resolve_metrics_log_path,
     should_run_ocr,
 )
 
@@ -29,7 +32,7 @@ def test_latest_frame_queue_drops_oldest_item():
 def test_processing_worker_drains_queue_after_stop(monkeypatch):
     processed = []
 
-    def fake_extract_chat_lines(screenshot, ocr, metrics=None):
+    def fake_extract_chat_lines(screenshot, ocr, ocr_profile=None, metrics=None):
         processed.append(screenshot)
         return {"team": ["[Alice] : hi"], "all": []}
 
@@ -52,6 +55,7 @@ def test_processing_worker_drains_queue_after_stop(monkeypatch):
         stop_event,
         error_queue,
         ocr=MagicMock(),
+        ocr_profile=None,
         team_buffer=MessageBuffer(),
         all_buffer=MessageBuffer(),
         chat_dedup=MagicMock(is_new=MagicMock(return_value=True)),
@@ -69,6 +73,21 @@ def test_create_metrics_collector_disabled_by_default():
     assert create_metrics_collector() is None
 
 
+def test_default_metrics_log_name_uses_timestamped_csv_name():
+    name = default_metrics_log_name()
+
+    assert name.startswith("performance_metrics_")
+    assert name.endswith(".csv")
+
+
+def test_resolve_metrics_log_path_defaults_to_new_timestamped_file():
+    path = resolve_metrics_log_path(None)
+
+    assert path.parent == Path(CONFIG["log_dir"])
+    assert path.name.startswith("performance_metrics_")
+    assert path.suffix == ".csv"
+
+
 def test_should_run_ocr_uses_nonzero_threshold():
     mask = np.zeros((3, 3), dtype=np.uint8)
     mask[0, 0] = 255
@@ -84,7 +103,7 @@ def test_extract_chat_lines_for_live_records_metrics(monkeypatch):
 
     monkeypatch.setattr(
         "ow_chat_logger.live_runtime.extract_chat_debug_data",
-        lambda image, ocr, should_run_ocr=None: {
+        lambda image, ocr, should_run_ocr=None, ocr_profile=None: {
             "timings": {
                 "preprocess_seconds": 0.01,
                 "ocr_seconds": 0.02,
@@ -116,7 +135,7 @@ def test_extract_chat_lines_for_live_skips_ocr_for_nearly_empty_masks(monkeypatc
     original = CONFIG["min_mask_nonzero_pixels_for_ocr"]
     CONFIG["min_mask_nonzero_pixels_for_ocr"] = 2
 
-    def fake_debug_data(image, ocr, should_run_ocr=None):
+    def fake_debug_data(image, ocr, should_run_ocr=None, ocr_profile=None):
         team_mask = np.array([[255, 0], [0, 0]], dtype=np.uint8)
         all_mask = np.array([[255, 255], [0, 0]], dtype=np.uint8)
         return {
@@ -158,7 +177,7 @@ def test_extract_chat_lines_for_live_records_skip_flags(monkeypatch):
 
     monkeypatch.setattr(
         "ow_chat_logger.live_runtime.extract_chat_debug_data",
-        lambda image, ocr, should_run_ocr=None: {
+        lambda image, ocr, should_run_ocr=None, ocr_profile=None: {
             "timings": {
                 "preprocess_seconds": 0.01,
                 "ocr_seconds": 0.02,

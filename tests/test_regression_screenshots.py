@@ -1,7 +1,7 @@
 """
 Screenshot OCR regression: compare filtered screenshot extraction output to expected JSON.
 
-Run (slow, loads EasyOCR):
+Run (loads Windows OCR):
   pip install -e ".[dev]"
   pytest --run-ocr tests/test_regression_screenshots.py
 
@@ -116,6 +116,7 @@ def test_screenshot_matches_expected(
         )
 
     ocr_engine_session = request.getfixturevalue("ocr_engine_session")
+    ocr_profile_session = request.getfixturevalue("ocr_profile_session")
 
     raw = expected_path.read_text(encoding="utf-8")
     expected = json.loads(raw)
@@ -127,7 +128,12 @@ def test_screenshot_matches_expected(
     assert want_all is not None, f"{expected_path}: missing all_lines"
 
     rgb = _load_rgb(png_path)
-    actual_lines = extract_chat_lines(rgb, ocr_engine_session, config_overrides=overrides)
+    actual_lines = extract_chat_lines(
+        rgb,
+        ocr_engine_session,
+        config_overrides=overrides,
+        ocr_profile=ocr_profile_session,
+    )
     actual = collect_screenshot_messages(actual_lines)
 
     _assert_channel_lines_match(

@@ -1,49 +1,36 @@
-import easyocr
+"""Backward-compatible Windows OCR exports.
 
-OCR_ALLOWLIST = (
-    'abcdefghijklmnopqrstuvwxyz'
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    '0123456789'
-    '# :[]*!?.,-üäöÜÄÖ+#()&%$§"='
+Internal callers should use the profile-aware OCR registry instead.
+"""
+
+from ow_chat_logger.ocr.base import ResolvedOCRProfile
+from ow_chat_logger.ocr import windows as _windows
+from ow_chat_logger.ocr.windows import (
+    WindowsOCRBackend,
+    _await_async_operation,
 )
 
 
-class OCREngine:
-    def __init__(self, languages, confidence_threshold, text_threshold, use_gpu=True):
-        self.confidence_threshold = confidence_threshold
-        self.text_threshold = text_threshold
-        self.reader = self._create_reader(languages, use_gpu)
+def _import_winrt_modules():
+    return _windows._import_winrt_modules()
 
-    @staticmethod
-    def _create_reader(languages, use_gpu):
-        if not use_gpu:
-            return easyocr.Reader(languages, gpu=False)
+
+class OCREngine(WindowsOCRBackend):
+    def __init__(self, languages):
+        original = _windows._import_winrt_modules
+        _windows._import_winrt_modules = _import_winrt_modules
         try:
-            return easyocr.Reader(languages, gpu=True)
-        except Exception:
-            return easyocr.Reader(languages, gpu=False)
+            super().__init__(
+                ResolvedOCRProfile(
+                    name="legacy_windows",
+                    engine_id="windows",
+                    languages=list(languages),
+                    pipeline={},
+                    settings={},
+                )
+            )
+        finally:
+            _windows._import_winrt_modules = original
 
-    def run(self, mask, *, confidence_threshold=None, text_threshold=None):
-        confidence_threshold = (
-            self.confidence_threshold
-            if confidence_threshold is None
-            else confidence_threshold
-        )
-        text_threshold = (
-            self.text_threshold
-            if text_threshold is None
-            else text_threshold
-        )
-        results = self.reader.readtext(
-            mask,
-            detail=1,
-            paragraph=False,
-            text_threshold=text_threshold,
-            allowlist=OCR_ALLOWLIST,
-        )
 
-        return [
-            (bbox, text, conf)
-            for (bbox, text, conf) in results
-            if conf > confidence_threshold
-        ]
+__all__ = ["OCREngine", "_await_async_operation", "_import_winrt_modules"]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import threading
 import time
 import traceback
@@ -11,12 +12,12 @@ import numpy as np
 import pyautogui
 
 from ow_chat_logger.buffer import MessageBuffer
-from ow_chat_logger.config import CONFIG, get_app_paths
+from ow_chat_logger.config import CONFIG, get_app_paths, resolve_ocr_profile
 from ow_chat_logger.deduplication import DuplicateFilter
 from ow_chat_logger.logger import MessageLogger
 from ow_chat_logger.message_processing import flush_buffers, process_lines
 from ow_chat_logger.metrics import PerformanceMetrics
-from ow_chat_logger.ocr_engine import OCREngine
+from ow_chat_logger.ocr import OCRBackend, ResolvedOCRProfile, build_ocr_backend
 from ow_chat_logger.pipeline import extract_chat_debug_data
 
 
@@ -53,10 +54,15 @@ def capture():
     return np.array(pyautogui.screenshot(region=CONFIG["screen_region"]))
 
 
+def default_metrics_log_name() -> str:
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    return f"performance_metrics_{timestamp}.csv"
+
+
 def resolve_metrics_log_path(path_value: str | None) -> Path:
     paths = get_app_paths()
     if not path_value:
-        return paths.log_dir / "performance_metrics.csv"
+        return paths.log_dir / default_metrics_log_name()
 
     path = Path(path_value).expanduser()
     if path.is_absolute():
@@ -69,6 +75,7 @@ def create_metrics_collector(
     metrics_enabled_override: bool | None = None,
     metrics_interval_override: float | None = None,
     metrics_log_path_override: str | None = None,
+    ocr_profile: ResolvedOCRProfile | None = None,
 ) -> PerformanceMetrics | None:
     enabled = CONFIG.get("metrics_enabled", False)
     if metrics_enabled_override is not None:
@@ -88,8 +95,9 @@ def create_metrics_collector(
         resolve_metrics_log_path(log_path),
         interval_seconds=interval_seconds,
         capture_interval=CONFIG["capture_interval"],
-        use_gpu=CONFIG.get("use_gpu", True),
         screen_region=CONFIG["screen_region"],
+        ocr_profile_name=ocr_profile.name if ocr_profile is not None else "",
+        ocr_engine_id=ocr_profile.engine_id if ocr_profile is not None else "",
     )
 
 
@@ -105,7 +113,7 @@ def write_crash_log(exc: BaseException) -> None:
 
 
 def should_run_ocr(mask: np.ndarray, config: dict[str, Any] | None = None) -> bool:
-    cfg = CONFIG if config is None else config
+    cfg = resolve_ocr_profile(dict(CONFIG)).pipeline if config is None else config
     min_nonzero = max(int(cfg.get("min_mask_nonzero_pixels_for_ocr", 0)), 0)
     if min_nonzero == 0:
         return True
@@ -114,15 +122,16 @@ def should_run_ocr(mask: np.ndarray, config: dict[str, Any] | None = None) -> bo
 
 def extract_chat_lines_for_live(
     screenshot: np.ndarray,
-    ocr: OCREngine,
+    ocr: OCRBackend,
+    ocr_profile: ResolvedOCRProfile | None = None,
     metrics=None,
 ) -> dict[str, list[str]]:
     started = time.perf_counter()
-    debug_data = extract_chat_debug_data(
-        screenshot,
-        ocr,
-        should_run_ocr=should_run_ocr,
-    )
+    profile = resolve_ocr_profile(dict(CONFIG)) if ocr_profile is None else ocr_profile
+    debug_kwargs: dict[str, Any] = {"should_run_ocr": should_run_ocr}
+    if ocr_profile is not None:
+        debug_kwargs["ocr_profile"] = profile
+    debug_data = extract_chat_debug_data(screenshot, ocr, **debug_kwargs)
     if metrics is not None:
         timings = debug_data["timings"]
         metrics.record_processed_frame(
@@ -136,6 +145,8 @@ def extract_chat_lines_for_live(
             all_boxes=len(debug_data["ocr_results"]["all"]),
             team_lines=len(debug_data["raw_lines"]["team"]),
             all_lines=len(debug_data["raw_lines"]["all"]),
+            ocr_profile_name=profile.name,
+            ocr_engine_id=profile.engine_id,
         )
     return debug_data["raw_lines"]
 
@@ -174,6 +185,7 @@ def processing_worker(
     error_queue,
     *,
     ocr,
+    ocr_profile=None,
     team_buffer,
     all_buffer,
     chat_dedup,
@@ -192,7 +204,12 @@ def processing_worker(
             except Empty:
                 continue
 
-            lines_by_channel = extract_chat_lines_for_live(screenshot, ocr, metrics=metrics)
+            lines_by_channel = extract_chat_lines_for_live(
+                screenshot,
+                ocr,
+                ocr_profile=ocr_profile,
+                metrics=metrics,
+            )
             process_lines(
                 lines_by_channel,
                 team_buffer,
@@ -220,13 +237,10 @@ def run_live_logger(
     metrics_enabled_override: bool | None = None,
     metrics_interval_override: float | None = None,
     metrics_log_path_override: str | None = None,
+    ocr_profile_override: str | None = None,
 ) -> int:
-    ocr = OCREngine(
-        CONFIG["languages"],
-        CONFIG["confidence_threshold"],
-        CONFIG["text_threshold"],
-        use_gpu=CONFIG.get("use_gpu", True),
-    )
+    profile = resolve_ocr_profile(dict(CONFIG), ocr_profile_override)
+    ocr = build_ocr_backend(profile)
 
     chat_dedup = DuplicateFilter(CONFIG["max_remembered"])
     hero_dedup = DuplicateFilter(CONFIG["max_remembered"])
@@ -244,6 +258,7 @@ def run_live_logger(
         metrics_enabled_override=metrics_enabled_override,
         metrics_interval_override=metrics_interval_override,
         metrics_log_path_override=metrics_log_path_override,
+        ocr_profile=profile,
     )
 
     capture_thread = threading.Thread(
@@ -258,6 +273,7 @@ def run_live_logger(
         args=(frame_queue, stop_event, error_queue),
         kwargs={
             "ocr": ocr,
+            "ocr_profile": profile,
             "team_buffer": team_buffer,
             "all_buffer": all_buffer,
             "chat_dedup": chat_dedup,
@@ -270,7 +286,7 @@ def run_live_logger(
         daemon=True,
     )
 
-    print("ChatOCR running... Ctrl+C to stop.")
+    print(f"ChatOCR running with profile '{profile.name}' ({profile.engine_id}). Ctrl+C to stop.")
 
     try:
         try:

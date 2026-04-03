@@ -17,7 +17,6 @@ def test_performance_metrics_writes_csv_summary():
         metrics_path,
         interval_seconds=10.0,
         capture_interval=2.0,
-        use_gpu=False,
         screen_region=(1, 2, 3, 4),
     )
 
@@ -42,6 +41,8 @@ def test_performance_metrics_writes_csv_summary():
     rows = list(csv.DictReader(metrics_path.open("r", encoding="utf-8")))
     assert len(rows) == 1
     first = rows[0]
+    assert first["ocr_profile"] == ""
+    assert first["ocr_engine"] == ""
     assert first["frames_captured"] == "1"
     assert first["frames_processed"] == "1"
     assert first["frames_dropped"] == "1"
@@ -61,7 +62,6 @@ def test_performance_metrics_final_close_flushes_partial_interval():
         metrics_path,
         interval_seconds=60.0,
         capture_interval=2.0,
-        use_gpu=True,
         screen_region=(50, 400, 500, 600),
     )
 
@@ -73,6 +73,36 @@ def test_performance_metrics_final_close_flushes_partial_interval():
     assert rows[0]["frames_captured"] == "1"
 
 
+def test_performance_metrics_records_profile_metadata():
+    metrics_path = _local_tmp_dir("metrics-profile") / "profile.csv"
+    metrics = PerformanceMetrics(
+        metrics_path,
+        interval_seconds=10.0,
+        capture_interval=2.0,
+        screen_region=(1, 2, 3, 4),
+        ocr_profile_name="windows_default",
+        ocr_engine_id="windows",
+    )
+
+    metrics.record_processed_frame(
+        preprocess_seconds=0.001,
+        ocr_seconds=0.002,
+        parse_seconds=0.003,
+        total_seconds=0.006,
+        team_skipped=False,
+        all_skipped=False,
+        team_boxes=1,
+        all_boxes=1,
+        team_lines=1,
+        all_lines=1,
+    )
+    metrics.close()
+
+    rows = list(csv.DictReader(metrics_path.open("r", encoding="utf-8")))
+    assert rows[0]["ocr_profile"] == "windows_default"
+    assert rows[0]["ocr_engine"] == "windows"
+
+
 def test_performance_metrics_handles_missing_psutil(monkeypatch):
     metrics_path = _local_tmp_dir("metrics-no-psutil") / "no_psutil.csv"
     monkeypatch.setattr("ow_chat_logger.metrics.psutil", None)
@@ -81,7 +111,6 @@ def test_performance_metrics_handles_missing_psutil(monkeypatch):
         metrics_path,
         interval_seconds=1.0,
         capture_interval=2.0,
-        use_gpu=False,
         screen_region=(0, 0, 1, 1),
     )
 
