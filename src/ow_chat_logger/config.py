@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from collections.abc import Iterator, MutableMapping
+from collections.abc import Iterator, Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -177,30 +177,12 @@ class AppPaths:
     snap_dir: Path
 
 
-class LazyConfig(MutableMapping[str, Any]):
+class LazyConfig(Mapping[str, Any]):
     def _data(self) -> dict[str, Any]:
         return load_config()
 
     def __getitem__(self, key: str) -> Any:
         return self._data()[key]
-
-    def __setitem__(self, key: str, value: Any) -> None:
-        data = self._data()
-        data[key] = value
-        if key in LEGACY_OCR_FLAT_KEYS:
-            profile = data["ocr"]["profiles"][data["ocr"]["default_profile"]]
-            if key == "languages":
-                profile["languages"] = list(value)
-            elif key in PIPELINE_CONFIG_KEYS:
-                profile["pipeline"][key] = deepcopy(value)
-            elif key in ENGINE_SETTING_KEYS:
-                profile["settings"][key] = deepcopy(value)
-        reset_paths()
-
-    def __delitem__(self, key: str) -> None:
-        data = self._data()
-        del data[key]
-        reset_paths()
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._data())
