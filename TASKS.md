@@ -30,7 +30,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-16 | Capital `I` closing-bracket OCR suffix not covered by T-15 | bug | 🟢 `done` | 2026-04-03 |
 | T-17 | T-15 false positive: legitimate names ending in `l` stripped when bracket is missing | bug | ⚫ `deferred` | — |
 | T-18 | `\|` → `I` substitution in `normalize()` corrupts `l`-as-pipe in message content | bug | 🟢 `done` | 2026-04-03 |
-| T-19 | Multi-error lines (no bracket + spaces in name + `l:` suffix) fall through to continuation | bug | 🔴 `open` | — |
+| T-19 | Multi-error lines (no bracket + spaces in name + `l:` suffix) fall through to continuation | bug | 🟢 `done` | 2026-04-03 |
 | T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🔴 `open` | — |
 
 
@@ -127,9 +127,9 @@ The `ocr_fix_closing_bracket_l` guard fires whenever the closing bracket is miss
 
 ### T-19 · Multi-error OCR lines (missing bracket + spaces in name + `l:` suffix) fall through to continuation
 - **Severity:** bug
-- **State:** 🔴 `open`
+- **State:** 🟢 `done`
 - **File:** `src/ow_chat_logger/parser.py:113`
-- **Completed:** —
+- **Completed:** 2026-04-03
 
 When OCR produces simultaneous errors — missing opening bracket, word-splitting inside the player name, and `]` → `l` — no existing pattern matches. Example: `[A7X]: boris more healing pls` → OCR → `A: 7 X l: boris more healing pls`. MISSING_CLOSING_BRACKET_PATTERN requires `[` at the start. MISSING_OPENING_BRACKET_PATTERN requires a literal `\]` in the player position. The spaced-name variant `A: 7 X` hits neither. The line falls through to `continuation`, where it is silently appended to the previous message or discarded.
 

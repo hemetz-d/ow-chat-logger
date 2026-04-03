@@ -142,6 +142,34 @@ def test_pipe_in_player_name_becomes_I():
     assert r["msg"] == "hello"
 
 
+def test_multi_error_spaced_name_l_suffix():
+    """T-19: missing brackets + spaces in name + l: suffix → standard, not continuation."""
+    r = classify_line("A 7 X l: boris more healing pls")
+    assert r["category"] == "standard"
+    assert r["player"] == "A7X"
+    assert r["msg"] == "boris more healing pls"
+
+
+def test_multi_error_spaced_name_I_suffix():
+    """T-19: capital-I variant of the ] misread works the same way."""
+    r = classify_line("ZANGETSU I: hello dogges")
+    assert r["category"] == "standard"
+    assert r["player"] == "ZANGETSU"
+    assert r["msg"] == "hello dogges"
+
+
+def test_multi_error_player_segment_too_long_falls_through():
+    """T-19: player segment exceeding the length cap must not be promoted to standard."""
+    r = classify_line("this is way too long to be a player name l: something")
+    assert r["category"] == "continuation"
+
+
+def test_multi_error_does_not_eat_hero_lines():
+    """T-19: a hero-format line with (hero) must not be claimed by the spaced-name pattern."""
+    r = classify_line("Alice (Tracer): hello")
+    assert r["category"] == "hero"
+
+
 def test_contains_fragment_detects_system_message_fragment():
     assert contains_fragment("remember to act responsibly and report anything offensive")
 
