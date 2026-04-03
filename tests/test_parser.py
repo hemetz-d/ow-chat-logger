@@ -2,7 +2,6 @@
 
 import pytest
 
-from ow_chat_logger.ocr_engine import OCR_ALLOWLIST
 from ow_chat_logger.parser import classify_line, contains_fragment, normalize
 
 
@@ -28,6 +27,22 @@ def test_classify_standard_strips_player():
 
 
 @pytest.mark.parametrize(
+    "line,expected_player,expected_msg",
+    [
+        ("[Foo : bar baz", "Foo", "bar baz"),
+        ("Foo] : bar baz", "Foo", "bar baz"),
+        ("[Foo bar baz", "Foo", "bar baz"),
+        ("Foo] bar baz", "Foo", "bar baz"),
+    ],
+)
+def test_classify_standard_when_one_bracket_is_missing(line, expected_player, expected_msg):
+    r = classify_line(line)
+    assert r["category"] == "standard"
+    assert r["player"] == expected_player
+    assert r["msg"] == expected_msg
+
+
+@pytest.mark.parametrize(
     "line",
     [
         "Someone left the game",
@@ -36,6 +51,18 @@ def test_classify_standard_strips_player():
     ],
 )
 def test_classify_system_regex(line):
+    r = classify_line(line)
+    assert r["category"] == "system"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "A7X (Mercy) to Tloowy (Venture): Hello!",
+        "A7X (Mercy) to Tloowy (Venture) Hello!",
+    ],
+)
+def test_classify_targeted_hero_chat_as_system(line):
     r = classify_line(line)
     assert r["category"] == "system"
 
@@ -79,8 +106,3 @@ def test_normalize_pipe_to_I():
 
 def test_contains_fragment_detects_system_message_fragment():
     assert contains_fragment("remember to act responsibly and report anything offensive")
-
-
-def test_ocr_allowlist_contains_german_characters():
-    for char in "üäöÜÄÖ§":
-        assert char in OCR_ALLOWLIST

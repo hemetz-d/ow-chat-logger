@@ -6,8 +6,21 @@ STANDARD_PATTERN = re.compile(
     r'^\[(?P<player>[^\]]+)\]\s*:\s*(?P<msg>.*)$'
 )
 
+MISSING_CLOSING_BRACKET_PATTERN = re.compile(
+    r'^\[(?P<player>[^\s:\]]+)(?:\s*:\s*|\s+)(?P<msg>.*)$'
+)
+
+MISSING_OPENING_BRACKET_PATTERN = re.compile(
+    r'^(?P<player>[^\s:\[]+)\](?:\s*:\s*|\s+)(?P<msg>.*)$'
+)
+
 HERO_PATTERN = re.compile(
     r'^(?P<player>[^()]+)\s*\((?P<hero>[^)]+)\)(?:\s*:\s*(?P<msg>.*))?$'
+)
+
+TARGETED_HERO_CHAT_PATTERN = re.compile(
+    r'^.+\([^)]*\)\s+to\s+.+(?:\s*:.*)?$',
+    re.IGNORECASE,
 )
 
 SYSTEM_PATTERNS = [
@@ -26,7 +39,6 @@ SYSTEM_PATTERNS = [
     r".*players in channel.*",
     r".*to access voice.*",
     r"channels",
-    r"^.+\([^)]*\)\s+to\s+.+:\s*$",
 ]
 
 SYSTEM_MESSAGES = [
@@ -81,7 +93,7 @@ def classify_line(line):
         return {"category": "empty"}
 
     # Detect system messages
-    if SYSTEM_REGEX.search(line) or contains_fragment(line):
+    if TARGETED_HERO_CHAT_PATTERN.match(line) or SYSTEM_REGEX.search(line) or contains_fragment(line):
         return {
             "category": "system",
             "msg": line
@@ -96,6 +108,16 @@ def classify_line(line):
             "hero": "",
             "msg": m1.group("msg").strip()
         }
+
+    for pattern in (MISSING_CLOSING_BRACKET_PATTERN, MISSING_OPENING_BRACKET_PATTERN):
+        match = pattern.match(line)
+        if match:
+            return {
+                "category": "standard",
+                "player": match.group("player").strip(),
+                "hero": "",
+                "msg": match.group("msg").strip()
+            }
 
     # Hero format
     m2 = HERO_PATTERN.match(line)
