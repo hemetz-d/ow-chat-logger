@@ -29,7 +29,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-15 | Trailing `l:` in player prefix should normalize to closing bracket | bug | 🟢 `done` | 2026-04-03 |
 | T-16 | Capital `I` closing-bracket OCR suffix not covered by T-15 | bug | 🟢 `done` | 2026-04-03 |
 | T-17 | T-15 false positive: legitimate names ending in `l` stripped when bracket is missing | bug | ⚫ `deferred` | — |
-| T-18 | `\|` → `I` substitution in `normalize()` corrupts `l`-as-pipe in message content | bug | 🔴 `open` | — |
+| T-18 | `\|` → `I` substitution in `normalize()` corrupts `l`-as-pipe in message content | bug | 🟢 `done` | 2026-04-03 |
 | T-19 | Multi-error lines (no bracket + spaces in name + `l:` suffix) fall through to continuation | bug | 🔴 `open` | — |
 | T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🔴 `open` | — |
 
@@ -113,9 +113,9 @@ The `ocr_fix_closing_bracket_l` guard fires whenever the closing bracket is miss
 
 ### T-18 · `|` → `I` substitution in `normalize()` corrupts lowercase `l` in message content
 - **Severity:** bug
-- **State:** 🔴 `open`
+- **State:** 🟢 `done`
 - **File:** `src/ow_chat_logger/parser.py:79`
-- **Completed:** —
+- **Completed:** 2026-04-03
 
 `normalize()` applies `text.replace("|", "I")` to the entire raw OCR string before any structural parsing. The intent is to repair player-bracket OCR artifacts where `|` appears in place of `I` in a name. However, Windows OCR also reads lowercase `l` as `|` in certain font/contrast situations. The substitution then produces a capital `I` in message content — e.g. `"lol"` → OCR reads first `l` as `|` → normalize gives `"Iol"` — observed in output as `it's always others fault Iol`.
 

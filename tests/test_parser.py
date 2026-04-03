@@ -121,8 +121,25 @@ def test_normalize_standard_prefix_spacing():
     assert normalize("[Foo]:bar baz") == "[Foo]: bar baz"
 
 
-def test_normalize_pipe_to_I():
-    assert normalize("| am here") == "I am here"
+def test_normalize_pipe_preserved_in_message():
+    """T-18: normalize() must not substitute | in message body — pipe substitution is player-only."""
+    assert normalize("[A7X]: l|l") == "[A7X]: l|l"
+
+
+def test_pipe_substituted_in_player_name_not_message():
+    """T-18: | in player token becomes I; | in message body is left untouched."""
+    r = classify_line("[A7X]: l|l")
+    assert r["category"] == "standard"
+    assert r["player"] == "A7X"
+    assert r["msg"] == "l|l"
+
+
+def test_pipe_in_player_name_becomes_I():
+    """T-18: | appearing inside the player name brackets is corrected to I."""
+    r = classify_line("[|ANATOR]: hello")
+    assert r["category"] == "standard"
+    assert r["player"] == "IANATOR"
+    assert r["msg"] == "hello"
 
 
 def test_contains_fragment_detects_system_message_fragment():

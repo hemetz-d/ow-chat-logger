@@ -75,7 +75,6 @@ def normalize(text):
 
     # common OCR punctuation fixes
     text = text.replace(";", ":")
-    text = text.replace("|", "I")
 
     # Canonicalize standard chat prefix spacing once OCR has found "[player] : msg".
     text = re.sub(r"^\[([^\]]+)\]\s*:\s*", r"[\1]: ", text)
@@ -103,7 +102,7 @@ def classify_line(line):
     if m1:
         return {
             "category": "standard",
-            "player": m1.group("player").strip(),
+            "player": m1.group("player").strip().replace("|", "I"),
             "hero": "",
             "msg": m1.group("msg").strip(),
             "ocr_fix_closing_bracket": False,
@@ -112,15 +111,16 @@ def classify_line(line):
     for pattern in (MISSING_CLOSING_BRACKET_PATTERN, MISSING_OPENING_BRACKET_PATTERN):
         match = pattern.match(line)
         if match:
+            player = match.group("player").strip().replace("|", "I")
             return {
                 "category": "standard",
-                "player": match.group("player").strip(),
+                "player": player,
                 "hero": "",
                 "msg": match.group("msg").strip(),
                 "ocr_fix_closing_bracket": (
                     pattern is MISSING_CLOSING_BRACKET_PATTERN
                     and line.startswith("[")
-                    and match.group("player").strip()[-1:] in ("l", "I")
+                    and player[-1:] in ("l", "I")
                 ),
             }
 
@@ -129,7 +129,7 @@ def classify_line(line):
     if m2:
         return {
             "category": "hero",
-            "player": m2.group("player").strip(),
+            "player": m2.group("player").strip().replace("|", "I"),
             "hero": m2.group("hero").strip(),
             "msg": m2.group("msg").strip()
         }
