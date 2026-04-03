@@ -20,6 +20,10 @@ def normalize_finished_message(finished, chat_type):
     category = finished["category"]
     hero = finished.get("hero", "").strip()
 
+    # OCR can read the fixed closing bracket in "[player]:" as a trailing "l".
+    if category == "standard" and finished.get("ocr_fix_closing_bracket_l") and player.endswith("l"):
+        player = player[:-1]
+
     if player.lower() in IGNORED_SENDERS:
         return None
 

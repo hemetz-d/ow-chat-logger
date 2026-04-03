@@ -146,6 +146,20 @@ def test_collect_screenshot_messages_strips_trailing_report_suffix():
     }
 
 
+def test_collect_screenshot_messages_fixes_trailing_l_in_player_prefix():
+    actual = collect_screenshot_messages(
+        {
+            "team": ["[A7Xl: hello dogges"],
+            "all": [],
+        }
+    )
+
+    assert actual == {
+        "team_lines": ["[A7X]: hello dogges"],
+        "all_lines": [],
+    }
+
+
 def test_collect_screenshot_messages_strips_report_suffix_for_hero_lines_when_enabled():
     actual = collect_screenshot_messages(
         {

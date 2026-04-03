@@ -106,7 +106,8 @@ def classify_line(line):
             "category": "standard",
             "player": m1.group("player").strip(),
             "hero": "",
-            "msg": m1.group("msg").strip()
+            "msg": m1.group("msg").strip(),
+            "ocr_fix_closing_bracket_l": False,
         }
 
     for pattern in (MISSING_CLOSING_BRACKET_PATTERN, MISSING_OPENING_BRACKET_PATTERN):
@@ -116,7 +117,12 @@ def classify_line(line):
                 "category": "standard",
                 "player": match.group("player").strip(),
                 "hero": "",
-                "msg": match.group("msg").strip()
+                "msg": match.group("msg").strip(),
+                "ocr_fix_closing_bracket_l": (
+                    pattern is MISSING_CLOSING_BRACKET_PATTERN
+                    and line.startswith("[")
+                    and match.group("player").strip().endswith("l")
+                ),
             }
 
     # Hero format
