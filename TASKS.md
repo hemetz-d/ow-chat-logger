@@ -4,7 +4,7 @@ Derived from the senior design review (2026-04-03), updated 2026-04-03 after OCR
 Each task has a severity, location, description, and tracked state.
 
 Severity: **bug** | **structural** | **smell**
-State: `open` | `in-progress` | `review` | `done`
+State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `deferred`
 
 ---
 
@@ -12,26 +12,26 @@ State: `open` | `in-progress` | `review` | `done`
 
 | ID | Title | Severity | State | Completed |
 |----|-------|----------|-------|-----------|
-| T-01 | Y-anchor drift in `reconstruct_lines` | bug | `done` | 2026-04-03 |
-| T-02 | `HERO_PATTERN` too greedy | bug | `done` | 2026-04-03 |
-| T-03 | `r"channels"` bare substring | bug | `done` | 2026-04-03 |
-| T-04 | `LazyConfig` write not thread-safe | structural | `open` | — |
-| T-05 | `OCREngine` dead threshold attributes | structural | `done` | 2026-04-03 |
-| T-06 | Redundant crop on every live frame | structural | `open` | — |
-| T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | `open` | — |
-| T-08 | Shutdown race on buffer flush | structural | `open` | — |
-| T-09 | `OCREngine` has no swappable interface | structural | `done` | 2026-04-03 |
-| T-10 | Dead commented-out code | smell | `open` | — |
-| T-11 | CLI `--metrics` asymmetric flag | smell | `open` | — |
-| T-12 | `ResolvedOCRProfile` mutable dict fields in frozen dataclass | structural | `open` | — |
-| T-13 | `_benchmark_case` redundantly re-resolves profile per fixture | structural | `open` | — |
-| T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | `open` | — |
-| T-15 | Trailing `l:` in player prefix should normalize to closing bracket | bug | `done` | 2026-04-03 |
-| T-16 | Capital `I` closing-bracket OCR suffix not covered by T-15 | bug | `done` | 2026-04-03 |
-| T-17 | T-15 false positive: legitimate names ending in `l` stripped when bracket is missing | bug | `deferred` | — |
-| T-18 | `\|` → `I` substitution in `normalize()` corrupts `l`-as-pipe in message content | bug | `open` | — |
-| T-19 | Multi-error lines (no bracket + spaces in name + `l:` suffix) fall through to continuation | bug | `open` | — |
-| T-20 | Save debug screenshot when a parsing anomaly is detected | structural | `open` | — |
+| T-01 | Y-anchor drift in `reconstruct_lines` | bug | 🟢 `done` | 2026-04-03 |
+| T-02 | `HERO_PATTERN` too greedy | bug | 🟢 `done` | 2026-04-03 |
+| T-03 | `r"channels"` bare substring | bug | 🟢 `done` | 2026-04-03 |
+| T-04 | `LazyConfig` write not thread-safe | structural | 🔴 `open` | — |
+| T-05 | `OCREngine` dead threshold attributes | structural | 🟢 `done` | 2026-04-03 |
+| T-06 | Redundant crop on every live frame | structural | 🔴 `open` | — |
+| T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | 🔴 `open` | — |
+| T-08 | Shutdown race on buffer flush | structural | 🔴 `open` | — |
+| T-09 | `OCREngine` has no swappable interface | structural | 🟢 `done` | 2026-04-03 |
+| T-10 | Dead commented-out code | smell | 🔴 `open` | — |
+| T-11 | CLI `--metrics` asymmetric flag | smell | 🔴 `open` | — |
+| T-12 | `ResolvedOCRProfile` mutable dict fields in frozen dataclass | structural | 🔴 `open` | — |
+| T-13 | `_benchmark_case` redundantly re-resolves profile per fixture | structural | 🔴 `open` | — |
+| T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🔴 `open` | — |
+| T-15 | Trailing `l:` in player prefix should normalize to closing bracket | bug | 🟢 `done` | 2026-04-03 |
+| T-16 | Capital `I` closing-bracket OCR suffix not covered by T-15 | bug | 🟢 `done` | 2026-04-03 |
+| T-17 | T-15 false positive: legitimate names ending in `l` stripped when bracket is missing | bug | ⚫ `deferred` | — |
+| T-18 | `\|` → `I` substitution in `normalize()` corrupts `l`-as-pipe in message content | bug | 🔴 `open` | — |
+| T-19 | Multi-error lines (no bracket + spaces in name + `l:` suffix) fall through to continuation | bug | 🔴 `open` | — |
+| T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🔴 `open` | — |
 
 
 ---
@@ -40,7 +40,7 @@ State: `open` | `in-progress` | `review` | `done`
 
 ### T-01 · Y-anchor drift in `reconstruct_lines`
 - **Severity:** bug
-- **State:** `done`
+- **State:** 🟢 `done`
 - **File:** `src/ow_chat_logger/image_processing.py:110`
 - **Completed:** 2026-04-03
 
@@ -55,7 +55,7 @@ State: `open` | `in-progress` | `review` | `done`
 ### T-02 · `HERO_PATTERN` too greedy
 - **Severity:** bug
 - **File:** `src/ow_chat_logger/parser.py:9`
-- **State:** `done`
+- **State:** 🟢 `done`
 - **Completed:** 2026-04-03
 - **Completed:** —
 
@@ -69,7 +69,7 @@ The hero pattern `^(?P<player>[^()]+)\s*\((?P<hero>[^)]+)\)...` has no bracket r
 
 ### T-03 · `r"channels"` bare substring in system patterns
 - **Severity:** bug
-- **State:** `done`
+- **State:** 🟢 `done`
 - **File:** `src/ow_chat_logger/parser.py:29`
 - **Completed:** 2026-04-03
 
@@ -83,7 +83,7 @@ The pattern `r"channels"` in `SYSTEM_PATTERNS` is a bare substring match with no
 
 ### T-16 · Capital `I` closing-bracket OCR suffix not covered by T-15
 - **Severity:** bug
-- **State:** `done`
+- **State:** 🟢 `done`
 - **File:** `src/ow_chat_logger/parser.py:121`, `src/ow_chat_logger/message_processing.py:24`
 - **Completed:** 2026-04-03
 
@@ -97,7 +97,7 @@ OCR sometimes reads the closing bracket `]` as a capital `I` rather than a lower
 
 ### T-17 · T-15 fix creates false positive for legitimate player names ending in `l`
 - **Severity:** bug
-- **State:** `deferred`
+- **State:** ⚫ `deferred`
 - **File:** `src/ow_chat_logger/message_processing.py:24`, `src/ow_chat_logger/parser.py:121`
 - **Completed:** —
 
@@ -113,7 +113,7 @@ The `ocr_fix_closing_bracket_l` guard fires whenever the closing bracket is miss
 
 ### T-18 · `|` → `I` substitution in `normalize()` corrupts lowercase `l` in message content
 - **Severity:** bug
-- **State:** `open`
+- **State:** 🔴 `open`
 - **File:** `src/ow_chat_logger/parser.py:79`
 - **Completed:** —
 
@@ -127,7 +127,7 @@ The `ocr_fix_closing_bracket_l` guard fires whenever the closing bracket is miss
 
 ### T-19 · Multi-error OCR lines (missing bracket + spaces in name + `l:` suffix) fall through to continuation
 - **Severity:** bug
-- **State:** `open`
+- **State:** 🔴 `open`
 - **File:** `src/ow_chat_logger/parser.py:113`
 - **Completed:** —
 
@@ -141,7 +141,7 @@ When OCR produces simultaneous errors — missing opening bracket, word-splittin
 
 ### T-15 - Trailing `l:` in player prefix should normalize to closing bracket
 - **Severity:** bug
-- **State:** `done`
+- **State:** 🟢 `done`
 - **File:** `src/ow_chat_logger/message_processing.py:18`
 - **Completed:** 2026-04-03
 
@@ -157,7 +157,7 @@ OCR sometimes reads the closing bracket in the fixed chat prefix as a lowercase 
 
 ### T-04 · `LazyConfig` write path is not thread-safe
 - **Severity:** structural
-- **State:** `open`
+- **State:** 🔴 `open`
 - **File:** `src/ow_chat_logger/config.py:187`
 - **Completed:** —
 
@@ -171,7 +171,7 @@ OCR sometimes reads the closing bracket in the fixed chat prefix as a lowercase 
 
 ### T-06 · Redundant `crop_to_screen_region` call on every live frame
 - **Severity:** structural
-- **State:** `open`
+- **State:** 🔴 `open`
 - **File:** `src/ow_chat_logger/pipeline.py:95`
 - **Completed:** —
 
@@ -185,7 +185,7 @@ OCR sometimes reads the closing bracket in the fixed chat prefix as a lowercase 
 
 ### T-07 · `DEFAULT_ALLOWLIST` hardcoded for EN+DE regardless of language config
 - **Severity:** structural
-- **State:** `open`
+- **State:** 🔴 `open`
 - **File:** `src/ow_chat_logger/ocr/easyocr_backend.py:7`
 - **Completed:** —
 
@@ -199,7 +199,7 @@ The default allowlist contains German umlauts (`üäöÜÄÖ`) hardcoded. While 
 
 ### T-08 · Shutdown race: buffer flush after non-guaranteed thread join
 - **Severity:** structural
-- **State:** `open`
+- **State:** 🔴 `open`
 - **File:** `src/ow_chat_logger/live_runtime.py:308-318`
 - **Completed:** —
 
@@ -213,7 +213,7 @@ After `processing_thread.join(timeout=1.0)`, `flush_buffers` runs immediately on
 
 ### T-12 · `ResolvedOCRProfile` is frozen but contains mutable dicts
 - **Severity:** structural
-- **State:** `open`
+- **State:** 🔴 `open`
 - **File:** `src/ow_chat_logger/ocr/base.py:21`
 - **Completed:** —
 
@@ -227,7 +227,7 @@ After `processing_thread.join(timeout=1.0)`, `flush_buffers` runs immediately on
 
 ### T-13 · `_benchmark_case` redundantly resolves profile per fixture
 - **Severity:** structural
-- **State:** `open`
+- **State:** 🔴 `open`
 - **File:** `src/ow_chat_logger/benchmark.py:91`
 - **Completed:** —
 
@@ -241,7 +241,7 @@ After `processing_thread.join(timeout=1.0)`, `flush_buffers` runs immediately on
 
 ### T-20 · Save debug screenshot when a parsing anomaly is detected
 - **Severity:** structural
-- **State:** `open`
+- **State:** 🔴 `open`
 - **File:** `src/ow_chat_logger/pipeline.py`, `src/ow_chat_logger/live_runtime.py`
 - **Completed:** —
 
@@ -255,7 +255,7 @@ When the OCR pipeline produces a suspicious result — e.g. a line falls through
 
 ### T-14 · `ocr_engine.py` legacy shim monkey-patches a module-level function in `__init__`
 - **Severity:** structural
-- **State:** `open`
+- **State:** 🔴 `open`
 - **File:** `src/ow_chat_logger/ocr_engine.py:20`
 - **Completed:** —
 
@@ -271,7 +271,7 @@ When the OCR pipeline produces a suspicious result — e.g. a line falls through
 
 ### T-10 · Dead commented-out code in `image_processing.py`
 - **Severity:** smell
-- **State:** `open`
+- **State:** 🔴 `open`
 - **File:** `src/ow_chat_logger/image_processing.py:90-99`
 - **Completed:** —
 
@@ -285,7 +285,7 @@ An old `INTER_NEAREST` version of `clean_mask` lives as a comment block below th
 
 ### T-11 · CLI `--metrics` flag can only force-on, not force-off
 - **Severity:** smell
-- **State:** `open`
+- **State:** 🔴 `open`
 - **File:** `src/ow_chat_logger/main.py:84`
 - **Completed:** —
 
@@ -301,14 +301,14 @@ An old `INTER_NEAREST` version of `clean_mask` lives as a comment block below th
 
 ### T-05 · `OCREngine` stored thresholds that were never used
 - **Severity:** structural
-- **State:** `done`
+- **State:** 🟢 `done`
 - **Completed:** 2026-04-03
 
 Resolved by the OCR modularisation. Each backend now owns its thresholds as instance state (e.g. `EasyOCRBackend.confidence_threshold`). The pipeline calls `ocr.run(mask)` with no threshold arguments — backends consume their own settings. The old dual-ownership problem is gone.
 
 ### T-09 · `OCREngine` had no swappable interface
 - **Severity:** structural
-- **State:** `done`
+- **State:** 🟢 `done`
 - **Completed:** 2026-04-03
 
 Resolved by the OCR modularisation. `base.py` defines `OCRBackend` (Protocol) and `BaseOCRBackend` (ABC with `@abstractmethod run()`). Three backends implement it: `WindowsOCRBackend`, `EasyOCRBackend`, `TesseractOCRBackend`. `registry.py` provides `build_ocr_backend(profile)` factory. `ocr_engine.py` is now a thin legacy shim wrapping the Windows backend.
