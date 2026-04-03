@@ -50,7 +50,18 @@ Before writing any code:
 
 If the scope turns out to be larger than the task description implies, surface this to the human before proceeding.
 
-### 3. Fix
+### 3. Describe
+
+Before writing any code, produce a short plain-language description of exactly what will be changed:
+
+- Which file(s) and line(s) will be touched
+- What the change is (e.g. "remove `__setitem__`" or "wrap mutation in `RLock`")
+- What the expected outcome is (what breaks before, what passes after)
+- Any alternatives considered and why they were ruled out
+
+Present this to the human and wait for a go-ahead before proceeding to the fix. This step is not optional for structural or larger bug changes. It can be omitted only for smell tasks with a trivially obvious mechanical fix (e.g. delete a comment block).
+
+### 4. Fix
 
 Make the minimal change that addresses the task. Do not refactor surrounding code, rename unrelated things, or fix adjacent smells unless they are explicitly part of the task.
 
@@ -61,7 +72,7 @@ Checklist:
 - [ ] Existing tests still pass (run before opening for review)
 - [ ] New or updated test(s) cover the fix
 
-### 4. Test Execution (mandatory)
+### 5. Test Execution (mandatory)
 
 Run the full test suite before marking as `review`:
 
@@ -77,7 +88,7 @@ pytest --run-ocr tests/test_regression_screenshots.py
 
 Document the test result in the task or in the PR. A failing test suite blocks the iteration — fix before escalating to review.
 
-### 5. Human Review (mandatory)
+### 6. Human Review (mandatory)
 
 Mark the task state `review` and present to the human:
 
@@ -88,9 +99,9 @@ Mark the task state `review` and present to the human:
 
 The human inspects the diff, asks questions, and either:
 - **Approves** → task moves to `done`, completion date recorded in `TASKS.md`
-- **Requests changes** → task stays/returns to `in-progress`, feedback noted, revision cycle repeats from step 3
+- **Requests changes** → task stays/returns to `in-progress`, feedback noted, revision cycle repeats from step 4
 
-### 6. Close
+### 7. Close
 
 After human approval:
 

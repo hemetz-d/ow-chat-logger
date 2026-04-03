@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ow_chat_logger.config import resolve_log_dir
+from ow_chat_logger.config import CONFIG, resolve_log_dir
 
 
 def test_resolve_log_dir_expanduser(monkeypatch):
@@ -24,3 +24,8 @@ def test_resolve_log_dir_appdata(monkeypatch):
     monkeypatch.setenv("APPDATA", str(appdata))
     p = resolve_log_dir("%APPDATA%\\ow-chat-logger")
     assert p == appdata / "ow-chat-logger"
+
+
+def test_lazy_config_is_read_only():
+    with pytest.raises(TypeError):
+        CONFIG["capture_interval"] = 99.0

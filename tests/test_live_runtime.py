@@ -131,9 +131,10 @@ def test_extract_chat_lines_for_live_records_metrics(monkeypatch):
 
 
 def test_extract_chat_lines_for_live_skips_ocr_for_nearly_empty_masks(monkeypatch):
+    import ow_chat_logger.config as cfg_module
     screenshot = np.zeros((2, 2, 3), dtype=np.uint8)
-    original = CONFIG["min_mask_nonzero_pixels_for_ocr"]
-    CONFIG["min_mask_nonzero_pixels_for_ocr"] = 2
+    cfg_module.load_config()
+    monkeypatch.setitem(cfg_module._cached_config, "min_mask_nonzero_pixels_for_ocr", 2)
 
     def fake_debug_data(image, ocr, should_run_ocr=None, ocr_profile=None):
         team_mask = np.array([[255, 0], [0, 0]], dtype=np.uint8)
@@ -163,11 +164,7 @@ def test_extract_chat_lines_for_live_skips_ocr_for_nearly_empty_masks(monkeypatc
         fake_debug_data,
     )
 
-    try:
-        lines = extract_chat_lines_for_live(screenshot, MagicMock())
-    finally:
-        CONFIG["min_mask_nonzero_pixels_for_ocr"] = original
-
+    lines = extract_chat_lines_for_live(screenshot, MagicMock())
     assert lines == {"team": [], "all": ["text-1"]}
 
 

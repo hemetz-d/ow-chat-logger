@@ -15,7 +15,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-01 | Y-anchor drift in `reconstruct_lines` | bug | 🟢 `done` | 2026-04-03 |
 | T-02 | `HERO_PATTERN` too greedy | bug | 🟢 `done` | 2026-04-03 |
 | T-03 | `r"channels"` bare substring | bug | 🟢 `done` | 2026-04-03 |
-| T-04 | `LazyConfig` write not thread-safe | structural | 🔴 `open` | — |
+| T-04 | `LazyConfig` write not thread-safe | structural | 🟢 `done` | 2026-04-03 |
 | T-05 | `OCREngine` dead threshold attributes | structural | 🟢 `done` | 2026-04-03 |
 | T-06 | Redundant crop on every live frame | structural | 🔴 `open` | — |
 | T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | 🔴 `open` | — |
@@ -157,9 +157,9 @@ OCR sometimes reads the closing bracket in the fixed chat prefix as a lowercase 
 
 ### T-04 · `LazyConfig` write path is not thread-safe
 - **Severity:** structural
-- **State:** 🔴 `open`
+- **State:** 🟢 `done`
 - **File:** `src/ow_chat_logger/config.py:187`
-- **Completed:** —
+- **Completed:** 2026-04-03
 
 `LazyConfig.__setitem__` mutates the shared `_cached_config` dict in place — and now also writes into nested profile dicts — with no lock. The `MutableMapping` interface makes this look safe. While no current production code path writes to `CONFIG` from a worker thread, the interface invites it. A concurrent read (from the processing worker) overlapping with a write is a silent data race on plain dicts.
 
