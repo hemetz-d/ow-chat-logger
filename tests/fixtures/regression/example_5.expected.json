@@ -8,8 +8,5 @@
   "all_lines": [
     "[Flea]: noraatiger der name ist schon geschmacklos"
   ],
-  "config_overrides": {
-    "all_hsv_lower": [0, 100, 100],
-    "all_hsv_upper": [18, 255, 255]
-  }
+  "config_overrides": {}
 }

@@ -176,7 +176,7 @@ def test_run_analyze_report_matches_existing_regression_expectation(monkeypatch,
                 "team": ["[FrankShoe] : gg team no heals"],
                 "all": [
                     "[Smokeelite3] : lads what the hell are yous doing",
-                    "[Smokeelite3] : that was embarassing",
+                    "[Smokeelite3] : that was embarrasing",
                     "[MrHenderson] : you guys suck baalls",
                 ],
             },

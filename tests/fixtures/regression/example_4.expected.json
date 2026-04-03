@@ -9,8 +9,5 @@
     "[Flea]: frag doch geschmacklos",
     "[noraATiger]: i dont unnderstand"
   ],
-  "config_overrides": {
-    "team_hsv_lower": [84, 100, 100],
-    "team_hsv_upper": [110, 255, 255]
-  }
+  "config_overrides": {}
 }
