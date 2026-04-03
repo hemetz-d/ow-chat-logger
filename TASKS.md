@@ -14,7 +14,7 @@ State: `open` | `in-progress` | `review` | `done`
 |----|-------|----------|-------|-----------|
 | T-01 | Y-anchor drift in `reconstruct_lines` | bug | `done` | 2026-04-03 |
 | T-02 | `HERO_PATTERN` too greedy | bug | `done` | 2026-04-03 |
-| T-03 | `r"channels"` bare substring | bug | `open` | — |
+| T-03 | `r"channels"` bare substring | bug | `done` | 2026-04-03 |
 | T-04 | `LazyConfig` write not thread-safe | structural | `open` | — |
 | T-05 | `OCREngine` dead threshold attributes | structural | `done` | 2026-04-03 |
 | T-06 | Redundant crop on every live frame | structural | `open` | — |
@@ -69,9 +69,9 @@ The hero pattern `^(?P<player>[^()]+)\s*\((?P<hero>[^)]+)\)...` has no bracket r
 
 ### T-03 · `r"channels"` bare substring in system patterns
 - **Severity:** bug
-- **State:** `open`
+- **State:** `done`
 - **File:** `src/ow_chat_logger/parser.py:29`
-- **Completed:** —
+- **Completed:** 2026-04-03
 
 The pattern `r"channels"` in `SYSTEM_PATTERNS` is a bare substring match with no anchoring or word boundary. Any player chat message containing the word "channels" is silently dropped as a system message.
 

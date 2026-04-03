@@ -127,3 +127,11 @@ def test_normalize_pipe_to_I():
 
 def test_contains_fragment_detects_system_message_fragment():
     assert contains_fragment("remember to act responsibly and report anything offensive")
+
+
+def test_player_message_containing_channels_is_not_system():
+    """Regression T-03: bare 'channels' pattern must not drop player chat containing that word."""
+    r = classify_line("[A7X]: we should use different channels")
+    assert r["category"] == "standard"
+    assert r["player"] == "A7X"
+    assert "channels" in r["msg"]
