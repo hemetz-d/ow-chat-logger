@@ -52,6 +52,20 @@ The pattern `r"channels"` in `SYSTEM_PATTERNS` is a bare substring match with no
 
 ---
 
+### T-15 - Trailing `l:` in player prefix should normalize to closing bracket
+- **Severity:** bug
+- **State:** `open`
+- **File:** `src/ow_chat_logger/message_processing.py:18`
+- **Completed:** -
+
+OCR sometimes reads the closing bracket in the fixed chat prefix as a lowercase `l`, producing outputs like `2026-04-03 12:16:11 | TEAM | A7Xl: hello dogges` instead of the intended `[A7X]: hello dogges`. Because the standard chat format is structurally fixed as `[player]: message`, this is a safe post-processing repair rather than something every parser branch should handle independently.
+
+**Fix direction:** In post-processing, detect standard chat player prefixes that effectively end in `l:` and normalize that suffix to `]:` before the final player/message record is emitted. Keep the correction scoped so it only applies to the fixed bracketed chat structure, not arbitrary message text.
+
+**Test surface:** `tests/test_message_processing.py` - add a regression case where OCR yields a player token with trailing `l` in the chat prefix and the final normalized line becomes `[A7X]: hello dogges`.
+
+---
+
 ## Structural Issues
 
 ### T-04 · `LazyConfig` write path is not thread-safe
@@ -218,3 +232,4 @@ Resolved by the OCR modularisation. `base.py` defines `OCRBackend` (Protocol) an
 | T-12 | `ResolvedOCRProfile` mutable dict fields in frozen dataclass | structural | `open` | — |
 | T-13 | `_benchmark_case` redundantly re-resolves profile per fixture | structural | `open` | — |
 | T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | `open` | — |
+| T-15 | Trailing `l:` in player prefix should normalize to closing bracket | bug | `open` | — |
