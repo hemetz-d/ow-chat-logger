@@ -1,7 +1,7 @@
 <#
 Build script for OW Chat Logger
 
-This script builds the standalone EXE via Nuitka.
+This script builds a Windows standalone folder app via Nuitka.
 
 Usage:
   .\build_exe.ps1
@@ -34,19 +34,15 @@ $env:PYTHONPATH = Join-Path (Get-Location) "src"
 
 Invoke-Step "Building executable with Nuitka..." {
   python -m nuitka `
-    --onefile `
     --standalone `
     --follow-imports `
     --assume-yes-for-downloads `
     --include-package=ow_chat_logger `
-    --include-package=easyocr `
-    --include-package=torch `
-    --module-parameter=torch-disable-jit=yes `
     --enable-plugin=tk-inter `
     --output-dir=dist `
     --output-filename=ow-chat-logger.exe `
     packaging\nuitka_entry.py
 }
-Write-Host "EXE build complete: dist\\ow-chat-logger.exe" -ForegroundColor Green
+Write-Host "Standalone build complete under dist\\" -ForegroundColor Green
 
 Write-Host "Build finished." -ForegroundColor Cyan
