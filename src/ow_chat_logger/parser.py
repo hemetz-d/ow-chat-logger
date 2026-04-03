@@ -15,7 +15,7 @@ MISSING_OPENING_BRACKET_PATTERN = re.compile(
 )
 
 HERO_PATTERN = re.compile(
-    r'^(?P<player>[^()]+)\s*\((?P<hero>[^)]+)\)(?:\s*:\s*(?P<msg>.*))?$'
+    r'^(?!\[)(?P<player>[^()]+)\s*\((?P<hero>[^)]+)\)\s*:\s*(?P<msg>.*)$'
 )
 
 TARGETED_HERO_CHAT_PATTERN = re.compile(
@@ -132,7 +132,7 @@ def classify_line(line):
             "category": "hero",
             "player": m2.group("player").strip(),
             "hero": m2.group("hero").strip(),
-            "msg": (m2.group("msg") or "").strip()
+            "msg": m2.group("msg").strip()
         }
 
     # fallback

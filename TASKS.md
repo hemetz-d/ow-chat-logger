@@ -13,7 +13,7 @@ State: `open` | `in-progress` | `review` | `done`
 | ID | Title | Severity | State | Completed |
 |----|-------|----------|-------|-----------|
 | T-01 | Y-anchor drift in `reconstruct_lines` | bug | `done` | 2026-04-03 |
-| T-02 | `HERO_PATTERN` too greedy | bug | `open` | — |
+| T-02 | `HERO_PATTERN` too greedy | bug | `done` | 2026-04-03 |
 | T-03 | `r"channels"` bare substring | bug | `open` | — |
 | T-04 | `LazyConfig` write not thread-safe | structural | `open` | — |
 | T-05 | `OCREngine` dead threshold attributes | structural | `done` | 2026-04-03 |
@@ -55,7 +55,8 @@ State: `open` | `in-progress` | `review` | `done`
 ### T-02 · `HERO_PATTERN` too greedy
 - **Severity:** bug
 - **File:** `src/ow_chat_logger/parser.py:9`
-- **State:** `open`
+- **State:** `done`
+- **Completed:** 2026-04-03
 - **Completed:** —
 
 The hero pattern `^(?P<player>[^()]+)\s*\((?P<hero>[^)]+)\)...` has no bracket requirement on the player name. Any OCR fragment of the form `word (word)` — including partial system messages that slip past `SYSTEM_REGEX` — is silently classified as a hero line. Continuation lines that happen to contain parentheses are also affected.
