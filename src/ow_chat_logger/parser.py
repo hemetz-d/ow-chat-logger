@@ -18,6 +18,13 @@ HERO_PATTERN = re.compile(
     r'^(?!\[)(?P<player>[^()]+)\s*\((?P<hero>[^)]+)\)\s*:\s*(?P<msg>.*)$'
 )
 
+# Matches lines where OCR introduced spaces inside the player name AND misread ']' as 'l'/'I',
+# with no brackets surviving at all. Player segment is alphanumeric-only (spaces stripped on
+# extraction). Length-bounded to ~25 chars to guard against false positives on continuation text.
+NO_BRACKET_SPACED_NAME_PATTERN = re.compile(
+    r'^(?P<player>[A-Za-z0-9](?:[A-Za-z0-9 ]{0,23}[A-Za-z0-9])?)\s+[lI]:\s+(?P<msg>\S.*)$'
+)
+
 TARGETED_HERO_CHAT_PATTERN = re.compile(
     r'^.+\([^)]*\)\s+to\s+.+(?:\s*:.*)?$',
     re.IGNORECASE,
@@ -75,7 +82,6 @@ def normalize(text):
 
     # common OCR punctuation fixes
     text = text.replace(";", ":")
-    text = text.replace("|", "I")
 
     # Canonicalize standard chat prefix spacing once OCR has found "[player] : msg".
     text = re.sub(r"^\[([^\]]+)\]\s*:\s*", r"[\1]: ", text)
@@ -103,7 +109,7 @@ def classify_line(line):
     if m1:
         return {
             "category": "standard",
-            "player": m1.group("player").strip(),
+            "player": m1.group("player").strip().replace("|", "I"),
             "hero": "",
             "msg": m1.group("msg").strip(),
             "ocr_fix_closing_bracket": False,
@@ -112,24 +118,38 @@ def classify_line(line):
     for pattern in (MISSING_CLOSING_BRACKET_PATTERN, MISSING_OPENING_BRACKET_PATTERN):
         match = pattern.match(line)
         if match:
+            player = match.group("player").strip().replace("|", "I")
             return {
                 "category": "standard",
-                "player": match.group("player").strip(),
+                "player": player,
                 "hero": "",
                 "msg": match.group("msg").strip(),
                 "ocr_fix_closing_bracket": (
                     pattern is MISSING_CLOSING_BRACKET_PATTERN
                     and line.startswith("[")
-                    and match.group("player").strip()[-1:] in ("l", "I")
+                    and player[-1:] in ("l", "I")
                 ),
             }
+
+    # No-bracket, spaced-name, l:/I: suffix (multi-error OCR: missing both brackets,
+    # spaces inserted into player name, ] misread as l or I)
+    m_spaced = NO_BRACKET_SPACED_NAME_PATTERN.match(line)
+    if m_spaced:
+        player = m_spaced.group("player").replace(" ", "").replace("|", "I")
+        return {
+            "category": "standard",
+            "player": player,
+            "hero": "",
+            "msg": m_spaced.group("msg").strip(),
+            "ocr_fix_closing_bracket": False,
+        }
 
     # Hero format
     m2 = HERO_PATTERN.match(line)
     if m2:
         return {
             "category": "hero",
-            "player": m2.group("player").strip(),
+            "player": m2.group("player").strip().replace("|", "I"),
             "hero": m2.group("hero").strip(),
             "msg": m2.group("msg").strip()
         }
