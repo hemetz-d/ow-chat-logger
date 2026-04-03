@@ -73,6 +73,28 @@ def test_reconstruct_lines_sliding_y_anchor():
     assert lines == ["a b c"]
 
 
+def test_reconstruct_lines_short_char_stays_on_same_line():
+    """Short characters (e.g. 'u') whose top-y is lower than tall neighbours
+    must still be grouped on the same visual line.
+
+    'fck' and 'moira' have top-y=0 (tall glyphs); 'u' has top-y=20 (short glyph)
+    but its center-y (~30) is within threshold of its neighbours' center-y (~20).
+    With threshold=14, top-y grouping misclassifies 'u' into a separate group
+    (diff=20 > 14), while center-y grouping correctly keeps it with the line.
+    """
+    cfg = {"y_merge_threshold": 14, "min_ocr_box_height": 0}
+    # tall box: top=0, height=40 → center_y=20
+    # short box: top=20, height=20 → center_y=30  (top-y diff from fck = 20 > 14)
+    # tall box: top=2, height=36 → center_y=20
+    results = [
+        (_box(0, 0, 30, 40), "fck", 0.9),
+        (_box(40, 20, 10, 20), "u", 0.9),
+        (_box(60, 2, 40, 36), "moira", 0.9),
+    ]
+    lines = reconstruct_lines(results, cfg)
+    assert lines == ["fck u moira"]
+
+
 def test_remove_small_components_drops_tiny_islands():
     mask = np.zeros((8, 8), dtype=np.uint8)
     mask[0, 0] = 255
