@@ -1,40 +1,131 @@
 # ow-chat-logger
 
-Windows-only OCR-based Overwatch chat logger focused on local runtime capture, parsing, and tuning.
+OCR-based Overwatch chat logger. Captures periodic screenshots, isolates chat text by color channel, runs OCR, and writes deduplicated messages to CSV.
 
-## Run
+```
+Screenshot (pyautogui)
+        |
+        v
+  HSV Color Filter
+  +-----------+   +-----------+
+  | BLUE mask |   |ORANGE mask|
+  | (team)    |   | (all)     |
+  +-----------+   +-----------+
+        |               |
+        v               v
+  Upscale 3x + morphological close
+        |               |
+        v               v
+       EasyOCR (GPU / CPU fallback)
+        |               |
+        v               v
+  Line reconstruct (Y-merge, height filter)
+        |               |
+        v               v
+  Parse + normalize (classify, fix OCR typos)
+        |               |
+        v               v
+  MessageBuffer (handle continuations per screenshot)
+        |               |
+        +-------+-------+
+                |
+                v
+       Dedup (LRU, 1000-entry window)
+                |
+                v
+     chat_log.csv / hero_log.csv
+```
+
+---
+
+## Modes
+
+### Live logger (default)
+
+Runs two threads: one captures screenshots at a configurable interval, the other processes frames through the OCR pipeline.
 
 ```bash
 python -m ow_chat_logger
 ```
 
-This build uses the built-in Windows OCR APIs through WinRT.
-
-Select a different OCR profile at runtime:
+With performance metrics written to CSV:
 
 ```bash
-python -m ow_chat_logger --ocr-profile easyocr_master_baseline
+python -m ow_chat_logger --metrics
+python -m ow_chat_logger --metrics --metrics-interval 5 --metrics-log-path perf.csv
 ```
 
-Enable runtime performance metrics:
+Output files (default: `%APPDATA%\ow-chat-logger\`):
+
+```
+chat_log.csv          timestamp | player | message | channel
+hero_log.csv          timestamp | player | hero     | channel
+crash.log             exception tracebacks
+performance_metrics.csv   timing, frame counts, duty cycle  (if --metrics)
+```
+
+### Analyze mode
+
+Runs the pipeline against a saved screenshot without capturing anything. Useful for tuning HSV ranges and OCR thresholds offline.
 
 ```bash
-python -m ow_chat_logger --metrics --metrics-interval 5
+python -m ow_chat_logger analyze --image path/to/screenshot.png
+python -m ow_chat_logger analyze --image screenshot.png --output-dir ./debug --config overrides.json
 ```
 
-Optional metrics flags:
-- `--metrics-interval <seconds>` to control summary frequency
-- `--metrics-log-path <path>` to write metrics CSV to a custom file
+Output:
+
+```
+<output-dir>/
+  original.png      cropped capture region
+  team_mask.png     blue (team) HSV mask
+  all_mask.png      orange (all) HSV mask
+  report.json       effective config, raw OCR lines, parsed messages
+```
+
+---
+
+## Configuration
+
+User config is loaded from `%APPDATA%\ow-chat-logger\config.json` (Windows) or `~/.ow-chat-logger/config.json`. Missing keys fall back to defaults. Override the path with `OW_CHAT_LOGGER_CONFIG`.
+
+`config_template.json` documents all available keys. Key tuning parameters:
+
+| Key | Default | Effect |
+|-----|---------|--------|
+| `screen_region` | `[50, 400, 500, 600]` | Capture region `[x, y, w, h]` in pixels |
+| `scale_factor` | `3` | Upscale before OCR (higher = slower, more accurate) |
+| `confidence_threshold` | `0.7` | Minimum OCR confidence to keep a box |
+| `y_merge_threshold` | `18` | Max Y distance (px) to merge boxes into one line |
+| `min_ocr_box_height` | `60` | Filter boxes shorter than this (noise rejection) |
+| `capture_interval` | `2.0` | Seconds between screenshots |
+| `team_hsv_lower/upper` | blue range | HSV bounds for team chat color |
+| `all_hsv_lower/upper` | orange range | HSV bounds for all-chat color |
+| `use_gpu` | `true` | Use GPU for EasyOCR; falls back to CPU automatically |
+| `languages` | `["en", "de"]` | EasyOCR language models to load |
+| `max_remembered` | `1000` | Deduplication window size |
+
+---
+
+## Installation
+
+```bash
+pip install -e ".[dev]"
+```
+
+Requires: `easyocr`, `opencv-python`, `pyautogui`, `numpy`, `pillow`, `psutil`
+
+---
 
 ## Tests
 
 ```bash
-pip install -e ".[dev]"
 pytest
 ```
 
-- **Unit tests** (default): parser, buffer, dedup, pipeline mocks, image reconstruction, config helpers.
-- **OCR screenshot regression** (optional): add `tests/fixtures/regression/<name>.png` + `<name>.expected.json`, then run:
+Unit tests cover parser, buffer, dedup, pipeline, image processing, logger, metrics, config, CLI, and analysis mode.
+
+OCR regression tests (slow, require GPU/CPU OCR):
 
 ```bash
 pytest --run-ocr tests/test_regression_screenshots.py
@@ -46,48 +137,14 @@ To run OCR regression against a non-default backend profile:
 pytest --run-ocr --ocr-profile easyocr_master_baseline tests/test_regression_screenshots.py
 ```
 
-See `tests/fixtures/regression/README.md` for the JSON format and `config_overrides`.
+Add regression fixtures as `tests/fixtures/regression/<name>.png` + `<name>.expected.json`. See the fixture README for the JSON format and per-fixture config overrides.
 
-## OCR Profiles
-- `windows_default`: current WinRT OCR implementation.
-- `easyocr_master_baseline`: preserved EasyOCR-style baseline matching the old `master` defaults.
-- `tesseract_default`: optional Tesseract profile for side-by-side comparisons.
+---
 
-Profile settings live under `ocr.default_profile` and `ocr.profiles` in config.
+## Standalone EXE (Windows)
 
-Legacy flat OCR keys are still accepted and mapped onto the default Windows profile.
-
-## Optional Backends
-Install optional OCR engines as needed:
-
-```bash
-pip install -e ".[dev,easyocr]"
-pip install -e ".[dev,tesseract]"
+```powershell
+.\build_exe.ps1
 ```
 
-## OCR Calibration
-Use the supported analyze mode to inspect OCR output for a saved screenshot:
-
-```bash
-python -m ow_chat_logger analyze --image path\to\screenshot.png
-```
-
-Optional flags:
-- `--output-dir <path>` to control where masks and the JSON report are written
-- `--config <path>` to layer JSON config overrides onto the normal runtime config for that analysis run
-- `--ocr-profile <name>` to analyze with a specific OCR profile
-
-## OCR Benchmarking
-Benchmark one or more OCR profiles against the screenshot regression fixtures:
-
-```bash
-python -m ow_chat_logger benchmark --profiles windows_default easyocr_master_baseline tesseract_default --json-out benchmark.json --csv-out benchmark.csv
-```
-
-Optional flags:
-- `--fixtures <path>` to point at a different regression fixture directory
-- `--benchmark-config <path>` to layer JSON config overrides onto the benchmark run
-- `--profiles <name> [<name> ...]` to benchmark a specific profile subset
-
-## Quality Tuning
-Adjust each profile's `pipeline` and `settings` blocks independently so Windows OCR, EasyOCR, and Tesseract can be tuned and benchmarked side by side without maintaining parallel branches.
+Uses Nuitka. Entry point: `packaging/nuitka_entry.py`.
