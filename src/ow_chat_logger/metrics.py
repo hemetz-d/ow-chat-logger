@@ -13,9 +13,10 @@ except Exception:  # pragma: no cover - graceful runtime fallback
 
 _CSV_FIELDS = [
     "timestamp",
+    "ocr_profile",
+    "ocr_engine",
     "interval_seconds",
     "capture_interval_config",
-    "use_gpu",
     "screen_region",
     "frames_captured",
     "frames_processed",
@@ -77,15 +78,17 @@ class PerformanceMetrics:
         *,
         interval_seconds: float,
         capture_interval: float,
-        use_gpu: bool,
         screen_region,
+        ocr_profile_name: str = "",
+        ocr_engine_id: str = "",
     ) -> None:
         self.file_path = Path(file_path)
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
         self.interval_seconds = max(float(interval_seconds), 0.1)
         self.capture_interval = float(capture_interval)
-        self.use_gpu = bool(use_gpu)
         self.screen_region = list(screen_region)
+        self.ocr_profile_name = ocr_profile_name
+        self.ocr_engine_id = ocr_engine_id
         self._lock = Lock()
         self._file = self.file_path.open("a", newline="", encoding="utf-8")
         self._writer = csv.DictWriter(self._file, fieldnames=_CSV_FIELDS)
@@ -142,8 +145,14 @@ class PerformanceMetrics:
         all_boxes: int,
         team_lines: int,
         all_lines: int,
+        ocr_profile_name: str = "",
+        ocr_engine_id: str = "",
     ) -> None:
         with self._lock:
+            if ocr_profile_name:
+                self.ocr_profile_name = ocr_profile_name
+            if ocr_engine_id:
+                self.ocr_engine_id = ocr_engine_id
             self._frames_processed += 1
             self._processing_busy_seconds += total_seconds
             self._preprocess_samples.append(preprocess_seconds)
@@ -211,9 +220,10 @@ class PerformanceMetrics:
 
         return {
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "ocr_profile": self.ocr_profile_name,
+            "ocr_engine": self.ocr_engine_id,
             "interval_seconds": f"{elapsed:.3f}",
             "capture_interval_config": f"{self.capture_interval:.3f}",
-            "use_gpu": self.use_gpu,
             "screen_region": json.dumps(self.screen_region),
             "frames_captured": self._frames_captured,
             "frames_processed": self._frames_processed,

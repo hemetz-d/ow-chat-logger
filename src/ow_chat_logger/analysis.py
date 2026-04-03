@@ -8,22 +8,19 @@ from typing import Any
 import cv2
 import numpy as np
 
-from ow_chat_logger.config import CONFIG, get_app_paths
+from ow_chat_logger.config import get_app_paths, merge_runtime_config, resolve_ocr_profile
 from ow_chat_logger.message_processing import collect_screenshot_messages
-from ow_chat_logger.ocr_engine import OCREngine
+from ow_chat_logger.ocr import build_ocr_backend
 from ow_chat_logger.pipeline import extract_chat_debug_data
 
 DISPLAY_CONFIG_KEYS = (
     "languages",
-    "confidence_threshold",
-    "text_threshold",
     "scale_factor",
     "y_merge_threshold",
     "team_hsv_lower",
     "team_hsv_upper",
     "all_hsv_lower",
     "all_hsv_upper",
-    "use_gpu",
 )
 
 
@@ -55,6 +52,10 @@ def analysis_report_paths(output_dir: Path) -> dict[str, Path]:
     }
 
 
+def _mask_step_output_paths(output_dir: Path, channel: str, steps: list[tuple[str, np.ndarray]]) -> list[Path]:
+    return [output_dir / f"{channel}_{step_name}.png" for step_name, _ in steps]
+
+
 def write_analysis_artifacts(
     analyzed_rgb_image: np.ndarray,
     debug_data: dict[str, Any],
@@ -70,7 +71,22 @@ def write_analysis_artifacts(
     cv2.imwrite(str(paths["team_mask"]), debug_data["masks"]["team"])
     cv2.imwrite(str(paths["all_mask"]), debug_data["masks"]["all"])
 
-    return {key: str(path) for key, path in paths.items()}
+    mask_debug_artifacts: dict[str, list[str]] = {}
+    mask_debug_steps = debug_data.get("mask_debug_steps") or {}
+    for channel in ("team", "all"):
+        written_paths: list[str] = []
+        channel_steps = list(mask_debug_steps.get(channel) or [])
+        for path, (_, mask_image) in zip(
+            _mask_step_output_paths(output_dir, channel, channel_steps),
+            channel_steps,
+        ):
+            cv2.imwrite(str(path), mask_image)
+            written_paths.append(str(path))
+        mask_debug_artifacts[channel] = written_paths
+
+    artifacts = {key: str(path) for key, path in paths.items()}
+    artifacts["mask_debug_steps"] = mask_debug_artifacts
+    return artifacts
 
 
 def print_analysis_summary(report: dict[str, Any], output_dir: Path) -> None:
@@ -98,26 +114,30 @@ def print_analysis_summary(report: dict[str, Any], output_dir: Path) -> None:
 def run_analyze(args) -> int:
     image_path = Path(args.image)
     output_dir = Path(args.output_dir) if args.output_dir else default_analysis_output_dir()
-    overrides = load_json_file(Path(args.config)) if args.config else {}
+    runtime_overrides = load_json_file(Path(args.config)) if args.config else {}
+    profile_name = getattr(args, "ocr_profile", None)
+    if not isinstance(profile_name, str):
+        profile_name = None
 
-    effective_config = {**CONFIG, **overrides}
-    ocr = OCREngine(
-        effective_config["languages"],
-        effective_config["confidence_threshold"],
-        effective_config["text_threshold"],
-        use_gpu=effective_config.get("use_gpu", True),
-    )
+    effective_config = merge_runtime_config(runtime_overrides)
+    profile = resolve_ocr_profile(effective_config, profile_name)
+    ocr = build_ocr_backend(profile)
 
     rgb_image = load_rgb_image(image_path)
     debug_data = extract_chat_debug_data(
         rgb_image,
         ocr,
-        config_overrides=overrides,
+        ocr_profile=profile,
     )
     final_lines = collect_screenshot_messages(debug_data["raw_lines"])
     report = {
         "source_image": str(image_path.resolve()),
         "effective_config": debug_data["config"],
+        "ocr_profile": {
+            "name": profile.name,
+            "engine": profile.engine_id,
+            "languages": profile.languages,
+        },
         "raw_lines": debug_data["raw_lines"],
         "final_lines": final_lines,
     }

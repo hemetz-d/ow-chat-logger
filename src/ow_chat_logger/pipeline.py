@@ -7,32 +7,52 @@ from typing import Any, Callable, Dict, Mapping, Optional
 
 import numpy as np
 
-from ow_chat_logger.config import CONFIG
+from ow_chat_logger.config import CONFIG, resolve_ocr_profile
 from ow_chat_logger.image_processing import (
-    clean_mask,
+    clean_mask_steps,
     create_chat_masks,
     reconstruct_lines,
 )
-from ow_chat_logger.ocr_engine import OCREngine
+from ow_chat_logger.ocr import OCRBackend, ResolvedOCRProfile
 
 
 def merge_pipeline_config(overrides: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
     """Merge runtime CONFIG with optional overrides (e.g. per-sample regression)."""
-    if not overrides:
-        return dict(CONFIG)
-    return {**CONFIG, **dict(overrides)}
+    return merge_pipeline_config_for_profile(
+        profile=resolve_ocr_profile(dict(CONFIG)),
+        overrides=overrides,
+    )
+
+
+def merge_pipeline_config_for_profile(
+    *,
+    profile: ResolvedOCRProfile,
+    overrides: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    cfg = {
+        **profile.pipeline,
+        "languages": list(profile.languages),
+        "ocr_profile": profile.name,
+        "ocr_engine": profile.engine_id,
+    }
+    if overrides:
+        cfg.update(dict(overrides))
+    return cfg
 
 
 def crop_to_screen_region(
     rgb_image: np.ndarray,
     config_overrides: Optional[Mapping[str, Any]] = None,
+    *,
+    profile: ResolvedOCRProfile | None = None,
 ) -> np.ndarray:
     """Crop full-screen images to the configured capture region when possible.
 
     Live runtime already captures only ``screen_region``. Regression/analyze inputs
     may be full-screen screenshots, so crop them first when the region fits.
     """
-    cfg = merge_pipeline_config(config_overrides)
+    active_profile = resolve_ocr_profile(dict(CONFIG)) if profile is None else profile
+    cfg = merge_pipeline_config_for_profile(profile=active_profile, overrides=config_overrides)
     region = cfg.get("screen_region")
     if not region or len(region) != 4:
         return rgb_image
@@ -53,10 +73,11 @@ def crop_to_screen_region(
 
 def extract_chat_debug_data(
     rgb_image: np.ndarray,
-    ocr: OCREngine,
+    ocr: OCRBackend,
     *,
     config_overrides: Optional[Mapping[str, Any]] = None,
     should_run_ocr: Optional[Callable[[np.ndarray, Mapping[str, Any]], bool]] = None,
+    ocr_profile: ResolvedOCRProfile | None = None,
 ) -> dict[str, Any]:
     """Run masks + OCR + reconstruction and return intermediate debug data.
 
@@ -65,18 +86,23 @@ def extract_chat_debug_data(
     rgb_image
         HxWx3 uint8 RGB (same as ``pyautogui.screenshot`` after ``np.array``).
     ocr
-        Initialized :class:`OCREngine` (can be CPU/GPU).
+        Initialized :class:`OCREngine`.
     config_overrides
-        Partial config dict (e.g. ``scale_factor``, ``confidence_threshold``).
+        Partial config dict (e.g. ``scale_factor``, ``screen_region``).
     """
-    cfg = merge_pipeline_config(config_overrides)
-    rgb_image = crop_to_screen_region(rgb_image, config_overrides)
+    profile = resolve_ocr_profile(dict(CONFIG)) if ocr_profile is None else ocr_profile
+    cfg = merge_pipeline_config_for_profile(profile=profile, overrides=config_overrides)
+    rgb_image = crop_to_screen_region(rgb_image, config_overrides, profile=profile)
 
     preprocess_started = time.perf_counter()
     blue_mask, orange_mask = create_chat_masks(rgb_image, cfg)
+    mask_debug_steps = {
+        "team": clean_mask_steps(blue_mask, cfg),
+        "all": clean_mask_steps(orange_mask, cfg),
+    }
     masks = {
-        "team": clean_mask(blue_mask, cfg),
-        "all": clean_mask(orange_mask, cfg),
+        "team": mask_debug_steps["team"][-1][1],
+        "all": mask_debug_steps["all"][-1][1],
     }
     preprocess_seconds = time.perf_counter() - preprocess_started
 
@@ -87,15 +113,7 @@ def extract_chat_debug_data(
         mask = masks[key]
         should_run = True if should_run_ocr is None else should_run_ocr(mask, cfg)
         ocr_skipped[key] = not should_run
-        ocr_results[key] = (
-            ocr.run(
-                mask,
-                confidence_threshold=cfg["confidence_threshold"],
-                text_threshold=cfg["text_threshold"],
-            )
-            if should_run
-            else []
-        )
+        ocr_results[key] = ocr.run(mask) if should_run else []
     ocr_seconds = time.perf_counter() - ocr_started
 
     parse_started = time.perf_counter()
@@ -109,6 +127,7 @@ def extract_chat_debug_data(
         "config": cfg,
         "cropped_rgb_image": rgb_image,
         "masks": masks,
+        "mask_debug_steps": mask_debug_steps,
         "ocr_results": ocr_results,
         "ocr_skipped": ocr_skipped,
         "raw_lines": out,
@@ -122,13 +141,15 @@ def extract_chat_debug_data(
 
 def extract_chat_lines(
     rgb_image: np.ndarray,
-    ocr: OCREngine,
+    ocr: OCRBackend,
     *,
     config_overrides: Optional[Mapping[str, Any]] = None,
+    ocr_profile: ResolvedOCRProfile | None = None,
 ) -> dict[str, list[str]]:
     """Run masks + OCR + line reconstruction for team and all chat."""
     return extract_chat_debug_data(
         rgb_image,
         ocr,
         config_overrides=config_overrides,
+        ocr_profile=ocr_profile,
     )["raw_lines"]

@@ -1,5 +1,71 @@
 {
   "log_dir": "%APPDATA%\\ow-chat-logger",
-  "confidence_threshold": 0.8,
-  "text_threshold": 0.6
+  "screen_region": [80, 400, 400, 600],
+  "ocr": {
+    "default_profile": "windows_default",
+    "profiles": {
+      "windows_default": {
+        "engine": "windows",
+        "languages": ["en", "de"],
+        "pipeline": {
+          "scale_factor": 4,
+          "high_quality_ocr": true,
+          "min_ocr_box_height": 30,
+          "min_component_area": 0,
+          "y_merge_threshold": 14,
+          "team_hsv_lower": [96, 190, 90],
+          "team_hsv_upper": [118, 255, 255],
+          "all_hsv_lower": [0, 150, 100],
+          "all_hsv_upper": [20, 255, 255],
+          "min_mask_nonzero_pixels_for_ocr": 24
+        },
+        "settings": {}
+      },
+      "easyocr_master_baseline": {
+        "engine": "easyocr",
+        "languages": ["en", "de"],
+        "pipeline": {
+          "scale_factor": 3,
+          "high_quality_ocr": false,
+          "min_ocr_box_height": 60,
+          "min_component_area": 0,
+          "y_merge_threshold": 18,
+          "team_hsv_lower": [84, 90, 90],
+          "team_hsv_upper": [112, 255, 255],
+          "all_hsv_lower": [0, 100, 100],
+          "all_hsv_upper": [20, 255, 255],
+          "min_mask_nonzero_pixels_for_ocr": 24
+        },
+        "settings": {
+          "confidence_threshold": 0.7,
+          "text_threshold": 0.5,
+          "use_gpu": true
+        }
+      },
+      "tesseract_default": {
+        "engine": "tesseract",
+        "languages": ["eng", "deu"],
+        "pipeline": {
+          "scale_factor": 4,
+          "high_quality_ocr": true,
+          "min_ocr_box_height": 30,
+          "min_component_area": 0,
+          "y_merge_threshold": 16,
+          "team_hsv_lower": [96, 190, 90],
+          "team_hsv_upper": [118, 255, 255],
+          "all_hsv_lower": [0, 150, 100],
+          "all_hsv_upper": [20, 255, 255],
+          "min_mask_nonzero_pixels_for_ocr": 24
+        },
+        "settings": {
+          "language": "eng+deu",
+          "psm": 6,
+          "oem": 3,
+          "confidence_threshold": 0.0,
+          "executable_path": "",
+          "extra_config": ""
+        }
+      }
+    }
+  }
 }

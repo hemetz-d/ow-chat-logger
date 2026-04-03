@@ -26,3 +26,6 @@ htmlcov/
 # Runtime data
 debug_snaps/
 *.csv
+
+.claude/
+.clone/

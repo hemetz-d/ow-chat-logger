@@ -5,6 +5,17 @@ from unittest.mock import MagicMock
 import numpy as np
 
 from ow_chat_logger.analysis import run_analyze
+from ow_chat_logger.ocr import ResolvedOCRProfile
+
+
+def _fake_profile(name: str = "windows_default", engine_id: str = "windows") -> ResolvedOCRProfile:
+    return ResolvedOCRProfile(
+        name=name,
+        engine_id=engine_id,
+        languages=["en"],
+        pipeline={"screen_region": (0, 0, 1, 1)},
+        settings={},
+    )
 
 
 def test_run_analyze_writes_report_and_masks(monkeypatch, local_tmp_dir):
@@ -15,26 +26,34 @@ def test_run_analyze_writes_report_and_masks(monkeypatch, local_tmp_dir):
     rgb_image = np.zeros((2, 2, 3), dtype=np.uint8)
 
     monkeypatch.setattr("ow_chat_logger.analysis.load_rgb_image", lambda path: rgb_image)
-    monkeypatch.setattr("ow_chat_logger.analysis.OCREngine", lambda *args, **kwargs: object())
+    monkeypatch.setattr("ow_chat_logger.analysis.resolve_ocr_profile", lambda *args, **kwargs: _fake_profile())
+    monkeypatch.setattr("ow_chat_logger.analysis.build_ocr_backend", lambda *args, **kwargs: object())
     monkeypatch.setattr(
         "ow_chat_logger.analysis.extract_chat_debug_data",
-        lambda image, ocr, config_overrides=None: {
+        lambda image, ocr, ocr_profile=None, config_overrides=None: {
             "config": {
                 "languages": ["en"],
-                "confidence_threshold": 0.7,
-                "text_threshold": 0.5,
                 "scale_factor": 3,
                 "y_merge_threshold": 18,
                 "team_hsv_lower": [1, 2, 3],
                 "team_hsv_upper": [4, 5, 6],
                 "all_hsv_lower": [7, 8, 9],
                 "all_hsv_upper": [10, 11, 12],
-                "use_gpu": False,
             },
             "cropped_rgb_image": rgb_image,
             "masks": {
                 "team": np.zeros((2, 2), dtype=np.uint8),
                 "all": np.ones((2, 2), dtype=np.uint8),
+            },
+            "mask_debug_steps": {
+                "team": [
+                    ("01_raw_threshold", np.zeros((2, 2), dtype=np.uint8)),
+                    ("02_upscaled", np.zeros((4, 4), dtype=np.uint8)),
+                ],
+                "all": [
+                    ("01_raw_threshold", np.ones((2, 2), dtype=np.uint8)),
+                    ("02_upscaled", np.ones((4, 4), dtype=np.uint8)),
+                ],
             },
             "raw_lines": {
                 "team": ["[Alice] : hi there"],
@@ -48,6 +67,7 @@ def test_run_analyze_writes_report_and_masks(monkeypatch, local_tmp_dir):
 
     report = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
     assert report["raw_lines"]["team"] == ["[Alice] : hi there"]
+    assert report["ocr_profile"]["name"] == "windows_default"
     assert report["final_lines"] == {
         "team_lines": ["[Alice]: hi there"],
         "all_lines": ["[Bob]: hello"],
@@ -55,6 +75,16 @@ def test_run_analyze_writes_report_and_masks(monkeypatch, local_tmp_dir):
     assert Path(report["artifacts"]["original_image"]).is_file()
     assert Path(report["artifacts"]["team_mask"]).is_file()
     assert Path(report["artifacts"]["all_mask"]).is_file()
+    assert report["artifacts"]["mask_debug_steps"]["team"] == [
+        str(output_dir / "team_01_raw_threshold.png"),
+        str(output_dir / "team_02_upscaled.png"),
+    ]
+    assert report["artifacts"]["mask_debug_steps"]["all"] == [
+        str(output_dir / "all_01_raw_threshold.png"),
+        str(output_dir / "all_02_upscaled.png"),
+    ]
+    assert Path(report["artifacts"]["mask_debug_steps"]["team"][0]).is_file()
+    assert Path(report["artifacts"]["mask_debug_steps"]["all"][1]).is_file()
 
 
 def test_run_analyze_honors_json_overrides(monkeypatch, local_tmp_dir):
@@ -66,9 +96,7 @@ def test_run_analyze_honors_json_overrides(monkeypatch, local_tmp_dir):
         json.dumps(
             {
                 "languages": ["de"],
-                "confidence_threshold": 0.25,
-                "text_threshold": 0.33,
-                "use_gpu": False,
+                "scale_factor": 4,
             }
         ),
         encoding="utf-8",
@@ -80,18 +108,27 @@ def test_run_analyze_honors_json_overrides(monkeypatch, local_tmp_dir):
         lambda path: np.zeros((1, 1, 3), dtype=np.uint8),
     )
 
-    def fake_ocr(languages, confidence_threshold, text_threshold, use_gpu=True):
-        created["languages"] = languages
-        created["confidence_threshold"] = confidence_threshold
-        created["text_threshold"] = text_threshold
-        created["use_gpu"] = use_gpu
+    def fake_build(profile):
+        created["languages"] = profile.languages
         return object()
 
-    monkeypatch.setattr("ow_chat_logger.analysis.OCREngine", fake_ocr)
+    monkeypatch.setattr(
+        "ow_chat_logger.analysis.resolve_ocr_profile",
+        lambda config, profile_name=None: ResolvedOCRProfile(
+            name=profile_name or "windows_default",
+            engine_id="windows",
+            languages=list(config["languages"]),
+            pipeline={"screen_region": (0, 0, 1, 1)},
+            settings={},
+        ),
+    )
+    monkeypatch.setattr("ow_chat_logger.analysis.build_ocr_backend", fake_build)
     monkeypatch.setattr(
         "ow_chat_logger.analysis.extract_chat_debug_data",
-        lambda image, ocr, config_overrides=None: {
-            "config": {**config_overrides},
+        lambda image, ocr, ocr_profile=None, config_overrides=None: {
+            "config": {
+                "languages": list(ocr_profile.languages if ocr_profile is not None else []),
+            },
             "cropped_rgb_image": image,
             "masks": {
                 "team": np.zeros((1, 1), dtype=np.uint8),
@@ -108,12 +145,7 @@ def test_run_analyze_honors_json_overrides(monkeypatch, local_tmp_dir):
     )
     run_analyze(args)
 
-    assert created == {
-        "languages": ["de"],
-        "confidence_threshold": 0.25,
-        "text_threshold": 0.33,
-        "use_gpu": False,
-    }
+    assert created == {"languages": ["de"]}
 
 
 def test_run_analyze_report_matches_existing_regression_expectation(monkeypatch, local_tmp_dir):
@@ -129,10 +161,11 @@ def test_run_analyze_report_matches_existing_regression_expectation(monkeypatch,
         "ow_chat_logger.analysis.load_rgb_image",
         lambda path: np.zeros((1, 1, 3), dtype=np.uint8),
     )
-    monkeypatch.setattr("ow_chat_logger.analysis.OCREngine", lambda *args, **kwargs: object())
+    monkeypatch.setattr("ow_chat_logger.analysis.resolve_ocr_profile", lambda *args, **kwargs: _fake_profile())
+    monkeypatch.setattr("ow_chat_logger.analysis.build_ocr_backend", lambda *args, **kwargs: object())
     monkeypatch.setattr(
         "ow_chat_logger.analysis.extract_chat_debug_data",
-        lambda image, ocr, config_overrides=None: {
+        lambda image, ocr, ocr_profile=None, config_overrides=None: {
             "config": {},
             "cropped_rgb_image": image,
             "masks": {

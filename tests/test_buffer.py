@@ -19,6 +19,26 @@ def test_feed_second_message_returns_first():
     assert b.current["player"] == "b"
 
 
+def test_feed_lenient_new_message_returns_previous():
+    b = MessageBuffer()
+    b.feed("[a] : first")
+    finished = b.feed("[b second")
+    assert finished["player"] == "a"
+    assert "first" in finished["msg"]
+    assert b.current["player"] == "b"
+    assert b.current["msg"] == "second"
+
+
+def test_feed_lenient_new_message_with_missing_opening_bracket_returns_previous():
+    b = MessageBuffer()
+    b.feed("[a] : first")
+    finished = b.feed("b] second")
+    assert finished["player"] == "a"
+    assert "first" in finished["msg"]
+    assert b.current["player"] == "b"
+    assert b.current["msg"] == "second"
+
+
 def test_continuation_appends():
     b = MessageBuffer()
     b.feed("[a] : start")
@@ -31,6 +51,15 @@ def test_system_clears_and_returns_previous():
     b.feed("[a] : hi")
     finished = b.feed("Player left the game")
     assert finished["player"] == "a"
+    assert b.current is None
+
+
+def test_targeted_hero_chat_system_line_does_not_append_to_previous_message():
+    b = MessageBuffer()
+    b.feed("[GrayOtter] : lil bro mad")
+    finished = b.feed("A7X (Mercy) to Tloowy (Venture): Hello!")
+    assert finished["player"] == "GrayOtter"
+    assert finished["msg"] == "lil bro mad"
     assert b.current is None
 
 

@@ -22,16 +22,32 @@ keywords = ["overwatch", "ocr", "chat", "logger"]
 dependencies = [
     "numpy",
     "opencv-python",
-    "easyocr",
     "psutil",
     "pyautogui",
     "pillow",
+    "winrt-runtime",
+    "winrt-Windows.Foundation",
+    "winrt-Windows.Foundation.Collections",
+    "winrt-Windows.Globalization",
+    "winrt-Windows.Graphics.Imaging",
+    "winrt-Windows.Media.Ocr",
+    "winrt-Windows.Storage.Streams",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+]
+easyocr = [
+    "easyocr",
+]
+tesseract = [
+    "pytesseract",
+]
+ocr-all = [
+    "easyocr",
+    "pytesseract",
 ]
 
 [project.scripts]
@@ -41,6 +57,6 @@ ow-chat-logger = "ow_chat_logger.main:main"
 testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
-    "ocr: screenshot / EasyOCR regression tests (use --run-ocr)",
+    "ocr: screenshot OCR regression tests (use --run-ocr)",
 ]
 addopts = "-ra"

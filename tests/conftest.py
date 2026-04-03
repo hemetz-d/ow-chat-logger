@@ -19,7 +19,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--run-ocr",
         action="store_true",
         default=False,
-        help="Run EasyOCR screenshot regression tests (slow; needs GPU/CPU time)",
+        help="Run OCR screenshot regression tests",
+    )
+    parser.addoption(
+        "--ocr-profile",
+        action="store",
+        default=None,
+        help="OCR profile name for OCR-enabled regression tests.",
     )
 
 
@@ -35,17 +41,21 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 @pytest.fixture(scope="session")
-def ocr_engine_session():
-    """Heavy: loads EasyOCR once per session. Only used by @pytest.mark.ocr tests."""
-    from ow_chat_logger.config import CONFIG
-    from ow_chat_logger.ocr_engine import OCREngine
+def ocr_profile_session(pytestconfig: pytest.Config):
+    from ow_chat_logger.config import resolve_ocr_profile
 
-    return OCREngine(
-        CONFIG["languages"],
-        CONFIG["confidence_threshold"],
-        CONFIG["text_threshold"],
-        use_gpu=True,
-    )
+    return resolve_ocr_profile(profile_name=pytestconfig.getoption("--ocr-profile"))
+
+
+@pytest.fixture(scope="session")
+def ocr_engine_session(ocr_profile_session):
+    """Loads the selected OCR backend once per session for @pytest.mark.ocr tests."""
+    from ow_chat_logger.ocr import OCRBackendUnavailableError, build_ocr_backend
+
+    try:
+        return build_ocr_backend(ocr_profile_session)
+    except OCRBackendUnavailableError as exc:
+        pytest.skip(str(exc))
 
 
 @pytest.fixture

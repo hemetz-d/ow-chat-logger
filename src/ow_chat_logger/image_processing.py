@@ -30,22 +30,62 @@ def create_chat_masks(img_rgb, config: Optional[Mapping[str, Any]] = None):
     return blue_mask, orange_mask
 
 
-def clean_mask(mask, config: Optional[Mapping[str, Any]] = None):
+def remove_small_components(mask, min_area: int):
+    if min_area <= 0:
+        return mask
+
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
+        (mask > 0).astype(np.uint8),
+        8,
+    )
+    cleaned = np.zeros_like(mask)
+    for label in range(1, num_labels):
+        area = int(stats[label, cv2.CC_STAT_AREA])
+        if area >= min_area:
+            cleaned[labels == label] = 255
+    return cleaned
+
+
+def _effective_scale_factor(cfg: Mapping[str, Any]) -> int | float:
+    scale = cfg["scale_factor"]
+    if cfg.get("high_quality_ocr", False):
+        return max(scale, 3)
+    return scale
+
+
+def clean_mask_steps(
+    mask,
+    config: Optional[Mapping[str, Any]] = None,
+) -> list[tuple[str, np.ndarray]]:
     cfg = _cfg(config)
-    # First upscale
-    mask = cv2.resize(
+    steps: list[tuple[str, np.ndarray]] = [("01_raw_threshold", mask.copy())]
+
+    upscaled = cv2.resize(
         mask,
         None,
-        fx=cfg["scale_factor"],
-        fy=cfg["scale_factor"],
-        interpolation=cv2.INTER_CUBIC,
+        fx=_effective_scale_factor(cfg),
+        fy=_effective_scale_factor(cfg),
+        interpolation=cv2.INTER_NEAREST,
     )
+    steps.append(("02_upscaled", upscaled.copy()))
 
-    # Then apply very light horizontal close
-    kernel = np.ones((1, 2), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    current = upscaled
+    if cfg.get("high_quality_ocr", False):
+        closed = cv2.morphologyEx(current, cv2.MORPH_CLOSE, np.ones((2, 2), np.uint8))
+        steps.append(("03_after_close", closed.copy()))
+        opened = cv2.morphologyEx(closed, cv2.MORPH_OPEN, np.ones((2, 1), np.uint8))
+        steps.append(("04_after_open", opened.copy()))
+        current = opened
 
-    return mask
+    cleaned = remove_small_components(current, int(cfg.get("min_component_area", 0)))
+    if not np.array_equal(cleaned, current):
+        steps.append(("05_after_component_filter", cleaned.copy()))
+
+    return steps
+
+
+def clean_mask(mask, config: Optional[Mapping[str, Any]] = None):
+    return clean_mask_steps(mask, config)[-1][1]
 
 # option with less processing (just upscaling)
 # def clean_mask(mask):
@@ -77,6 +117,7 @@ def reconstruct_lines(results, config: Optional[Mapping[str, Any]] = None):
 
         if abs(y - current_y) < cfg["y_merge_threshold"]:
             current.append((bbox, text))
+            current_y = y
         else:
             lines.append(current)
             current = [(bbox, text)]
