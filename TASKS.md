@@ -8,6 +8,29 @@ State: `open` | `in-progress` | `review` | `done`
 
 ---
 
+## Completion Tracking
+
+| ID | Title | Severity | State | Completed |
+|----|-------|----------|-------|-----------|
+| T-01 | Y-anchor drift in `reconstruct_lines` | bug | `done` | 2026-04-03 |
+| T-02 | `HERO_PATTERN` too greedy | bug | `open` | — |
+| T-03 | `r"channels"` bare substring | bug | `open` | — |
+| T-04 | `LazyConfig` write not thread-safe | structural | `open` | — |
+| T-05 | `OCREngine` dead threshold attributes | structural | `done` | 2026-04-03 |
+| T-06 | Redundant crop on every live frame | structural | `open` | — |
+| T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | `open` | — |
+| T-08 | Shutdown race on buffer flush | structural | `open` | — |
+| T-09 | `OCREngine` has no swappable interface | structural | `done` | 2026-04-03 |
+| T-10 | Dead commented-out code | smell | `open` | — |
+| T-11 | CLI `--metrics` asymmetric flag | smell | `open` | — |
+| T-12 | `ResolvedOCRProfile` mutable dict fields in frozen dataclass | structural | `open` | — |
+| T-13 | `_benchmark_case` redundantly re-resolves profile per fixture | structural | `open` | — |
+| T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | `open` | — |
+| T-15 | Trailing `l:` in player prefix should normalize to closing bracket | bug | `done` | 2026-04-03 |
+
+
+---
+
 ## Bugs
 
 ### T-01 · Y-anchor drift in `reconstruct_lines`
@@ -211,25 +234,3 @@ Resolved by the OCR modularisation. Each backend now owns its thresholds as inst
 - **Completed:** 2026-04-03
 
 Resolved by the OCR modularisation. `base.py` defines `OCRBackend` (Protocol) and `BaseOCRBackend` (ABC with `@abstractmethod run()`). Three backends implement it: `WindowsOCRBackend`, `EasyOCRBackend`, `TesseractOCRBackend`. `registry.py` provides `build_ocr_backend(profile)` factory. `ocr_engine.py` is now a thin legacy shim wrapping the Windows backend.
-
----
-
-## Completion Tracking
-
-| ID | Title | Severity | State | Completed |
-|----|-------|----------|-------|-----------|
-| T-01 | Y-anchor drift in `reconstruct_lines` | bug | `done` | 2026-04-03 |
-| T-02 | `HERO_PATTERN` too greedy | bug | `open` | — |
-| T-03 | `r"channels"` bare substring | bug | `open` | — |
-| T-04 | `LazyConfig` write not thread-safe | structural | `open` | — |
-| T-05 | `OCREngine` dead threshold attributes | structural | `done` | 2026-04-03 |
-| T-06 | Redundant crop on every live frame | structural | `open` | — |
-| T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | `open` | — |
-| T-08 | Shutdown race on buffer flush | structural | `open` | — |
-| T-09 | `OCREngine` has no swappable interface | structural | `done` | 2026-04-03 |
-| T-10 | Dead commented-out code | smell | `open` | — |
-| T-11 | CLI `--metrics` asymmetric flag | smell | `open` | — |
-| T-12 | `ResolvedOCRProfile` mutable dict fields in frozen dataclass | structural | `open` | — |
-| T-13 | `_benchmark_case` redundantly re-resolves profile per fixture | structural | `open` | — |
-| T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | `open` | — |
-| T-15 | Trailing `l:` in player prefix should normalize to closing bracket | bug | `done` | 2026-04-03 |
