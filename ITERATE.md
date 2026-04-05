@@ -1,5 +1,8 @@
 # Iteration Process
 
+> **Before anything else: `git pull`**
+> Do not read the task list, do not select a task, until this has run.
+
 This document defines how each task in `TASKS.md` is approached, reviewed, and closed. The goal is to keep changes small, verifiable, and human-confirmed before moving on.
 
 ---

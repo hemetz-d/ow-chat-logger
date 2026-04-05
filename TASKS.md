@@ -17,7 +17,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-03 | `r"channels"` bare substring | bug | 🟢 `done` | 2026-04-03 |
 | T-04 | `LazyConfig` write not thread-safe | structural | 🟢 `done` | 2026-04-03 |
 | T-05 | `OCREngine` dead threshold attributes | structural | 🟢 `done` | 2026-04-03 |
-| T-06 | Redundant crop on every live frame | structural | 🔴 `open` | — |
+| T-06 | Redundant crop on every live frame | structural | 🔵 `review` | — |
 | T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | 🔴 `open` | — |
 | T-08 | Shutdown race on buffer flush | structural | 🔴 `open` | — |
 | T-09 | `OCREngine` has no swappable interface | structural | 🟢 `done` | 2026-04-03 |
@@ -171,7 +171,7 @@ OCR sometimes reads the closing bracket in the fixed chat prefix as a lowercase 
 
 ### T-06 · Redundant `crop_to_screen_region` call on every live frame
 - **Severity:** structural
-- **State:** 🔴 `open`
+- **State:** 🔵 `review`
 - **File:** `src/ow_chat_logger/pipeline.py:95`
 - **Completed:** —
 

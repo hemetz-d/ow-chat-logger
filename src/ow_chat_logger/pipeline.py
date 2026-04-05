@@ -78,6 +78,7 @@ def extract_chat_debug_data(
     config_overrides: Optional[Mapping[str, Any]] = None,
     should_run_ocr: Optional[Callable[[np.ndarray, Mapping[str, Any]], bool]] = None,
     ocr_profile: ResolvedOCRProfile | None = None,
+    pre_cropped: bool = False,
 ) -> dict[str, Any]:
     """Run masks + OCR + reconstruction and return intermediate debug data.
 
@@ -89,10 +90,15 @@ def extract_chat_debug_data(
         Initialized :class:`OCREngine`.
     config_overrides
         Partial config dict (e.g. ``scale_factor``, ``screen_region``).
+    pre_cropped
+        Set ``True`` when the caller has already cropped to ``screen_region``
+        (e.g. live capture via ``pyautogui.screenshot(region=...)``).  Skips
+        the ``crop_to_screen_region`` call entirely.
     """
     profile = resolve_ocr_profile(dict(CONFIG)) if ocr_profile is None else ocr_profile
     cfg = merge_pipeline_config_for_profile(profile=profile, overrides=config_overrides)
-    rgb_image = crop_to_screen_region(rgb_image, config_overrides, profile=profile)
+    if not pre_cropped:
+        rgb_image = crop_to_screen_region(rgb_image, config_overrides, profile=profile)
 
     preprocess_started = time.perf_counter()
     blue_mask, orange_mask = create_chat_masks(rgb_image, cfg)

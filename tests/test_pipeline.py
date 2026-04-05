@@ -60,6 +60,32 @@ def test_crop_to_screen_region_crops_full_screen_image():
     assert np.array_equal(cropped, image[400:1000, 50:550])
 
 
+def test_extract_chat_debug_data_skips_crop_when_pre_cropped():
+    """Live path: pre_cropped=True must bypass crop_to_screen_region entirely."""
+    ocr = MagicMock()
+    ocr.run.return_value = []
+
+    # Small image that matches region dimensions (would be cropped if not pre-cropped)
+    img = np.zeros((600, 500, 3), dtype=np.uint8)
+
+    from ow_chat_logger.pipeline import extract_chat_debug_data
+
+    data = extract_chat_debug_data(
+        img,
+        ocr,
+        config_overrides={
+            "screen_region": (50, 400, 500, 600),
+            "scale_factor": 1,
+            "y_merge_threshold": 100,
+            "min_ocr_box_height": 0,
+        },
+        pre_cropped=True,
+    )
+
+    # Image passed through unchanged — same object, same shape
+    assert data["cropped_rgb_image"] is img
+
+
 def test_crop_to_screen_region_keeps_pre_cropped_image_when_region_does_not_fit():
     image = np.zeros((600, 500, 3), dtype=np.uint8)
 

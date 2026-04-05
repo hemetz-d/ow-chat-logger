@@ -128,7 +128,7 @@ def extract_chat_lines_for_live(
 ) -> dict[str, list[str]]:
     started = time.perf_counter()
     profile = resolve_ocr_profile(dict(CONFIG)) if ocr_profile is None else ocr_profile
-    debug_kwargs: dict[str, Any] = {"should_run_ocr": should_run_ocr}
+    debug_kwargs: dict[str, Any] = {"should_run_ocr": should_run_ocr, "pre_cropped": True}
     if ocr_profile is not None:
         debug_kwargs["ocr_profile"] = profile
     debug_data = extract_chat_debug_data(screenshot, ocr, **debug_kwargs)
