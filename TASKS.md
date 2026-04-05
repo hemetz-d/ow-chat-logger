@@ -12,7 +12,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 
 | ID | Title | Severity | State | Completed |
 |----|-------|----------|-------|-----------|
-| T-06 | Redundant crop on every live frame | structural | 🔵 `review` | — |
+| T-06 | Redundant crop on every live frame | structural | 🟢 `done` | 2026-04-06 |
 | T-08 | Shutdown race on buffer flush | structural | 🔴 `open` | — |
 | T-10 | Dead commented-out code | smell | 🔴 `open` | — |
 | T-11 | CLI `--metrics` asymmetric flag | smell | 🔴 `open` | — |
