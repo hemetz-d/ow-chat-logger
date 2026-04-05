@@ -12,7 +12,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 
 | ID | Title | Severity | State | Completed |
 |----|-------|----------|-------|-----------|
-| T-06 | Redundant crop on every live frame | structural | 🔵 `review` | — |
+| T-06 | Redundant crop on every live frame | structural | 🟢 `done` | 2026-04-06 |
 | T-08 | Shutdown race on buffer flush | structural | 🔴 `open` | — |
 | T-10 | Dead commented-out code | smell | 🔴 `open` | — |
 | T-11 | CLI `--metrics` asymmetric flag | smell | 🔴 `open` | — |
@@ -45,9 +45,9 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 
 ### T-06 · Redundant `crop_to_screen_region` call on every live frame
 - **Severity:** structural
-- **State:** 🔵 `review`
+- **State:** 🟢 `done`
 - **File:** `src/ow_chat_logger/pipeline.py:95`
-- **Completed:** —
+- **Completed:** 2026-04-06
 
 `extract_chat_debug_data` always calls `crop_to_screen_region`, but live captures are already cropped to `screen_region` by `pyautogui.screenshot(region=...)`. The bounds check prevents double-cropping but runs on every frame unnecessarily. This also creates a misleading dual-purpose function where callers must know whether their input is pre-cropped or full-screen.
 
