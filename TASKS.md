@@ -18,7 +18,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-04 | `LazyConfig` write not thread-safe | structural | 🟢 `done` | 2026-04-03 |
 | T-05 | `OCREngine` dead threshold attributes | structural | 🟢 `done` | 2026-04-03 |
 | T-06 | Redundant crop on every live frame | structural | 🔵 `review` | — |
-| T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | 🔴 `open` | — |
+| T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | ⚫ `deferred` | — |
 | T-08 | Shutdown race on buffer flush | structural | 🔴 `open` | — |
 | T-09 | `OCREngine` has no swappable interface | structural | 🟢 `done` | 2026-04-03 |
 | T-10 | Dead commented-out code | smell | 🔴 `open` | — |
@@ -185,7 +185,7 @@ OCR sometimes reads the closing bracket in the fixed chat prefix as a lowercase 
 
 ### T-07 · `DEFAULT_ALLOWLIST` hardcoded for EN+DE regardless of language config
 - **Severity:** structural
-- **State:** 🔴 `open`
+- **State:** ⚫ `deferred`
 - **File:** `src/ow_chat_logger/ocr/easyocr_backend.py:7`
 - **Completed:** —
 
