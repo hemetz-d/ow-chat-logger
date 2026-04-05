@@ -1,6 +1,6 @@
 # Tasks
 
-Derived from the senior design review (2026-04-03), updated 2026-04-03 after OCR modularisation branch review.
+Derived from the senior design review (2026-04-03), updated 2026-04-05 after focused codebase review.
 Each task has a severity, location, description, and tracked state.
 
 Severity: **bug** | **structural** | **smell**
@@ -12,162 +12,36 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 
 | ID | Title | Severity | State | Completed |
 |----|-------|----------|-------|-----------|
-| T-01 | Y-anchor drift in `reconstruct_lines` | bug | 🟢 `done` | 2026-04-03 |
-| T-02 | `HERO_PATTERN` too greedy | bug | 🟢 `done` | 2026-04-03 |
-| T-03 | `r"channels"` bare substring | bug | 🟢 `done` | 2026-04-03 |
-| T-04 | `LazyConfig` write not thread-safe | structural | 🟢 `done` | 2026-04-03 |
-| T-05 | `OCREngine` dead threshold attributes | structural | 🟢 `done` | 2026-04-03 |
-| T-06 | Redundant crop on every live frame | structural | 🟢 `done` | 2026-04-06 |
-| T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | ⚫ `deferred` | — |
+| T-06 | Redundant crop on every live frame | structural | 🔵 `review` | — |
 | T-08 | Shutdown race on buffer flush | structural | 🔴 `open` | — |
-| T-09 | `OCREngine` has no swappable interface | structural | 🟢 `done` | 2026-04-03 |
 | T-10 | Dead commented-out code | smell | 🔴 `open` | — |
 | T-11 | CLI `--metrics` asymmetric flag | smell | 🔴 `open` | — |
 | T-12 | `ResolvedOCRProfile` mutable dict fields in frozen dataclass | structural | 🔴 `open` | — |
 | T-13 | `_benchmark_case` redundantly re-resolves profile per fixture | structural | 🔴 `open` | — |
 | T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🔴 `open` | — |
+| T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🔴 `open` | — |
+| T-21 | `SYSTEM_PATTERNS` redundant `.*` prefixes | smell | 🔴 `open` | — |
+| T-22 | `_effective_scale_factor` computed twice per resize | smell | 🔴 `open` | — |
+| T-25 | Inline error-case dict in `run_benchmark` duplicates `_unavailable_case` | smell | 🔴 `open` | — |
+| T-01 | Y-anchor drift in `reconstruct_lines` | bug | 🟢 `done` | 2026-04-03 |
+| T-02 | `HERO_PATTERN` too greedy | bug | 🟢 `done` | 2026-04-03 |
+| T-03 | `r"channels"` bare substring | bug | 🟢 `done` | 2026-04-03 |
+| T-04 | `LazyConfig` write not thread-safe | structural | 🟢 `done` | 2026-04-03 |
+| T-05 | `OCREngine` dead threshold attributes | structural | 🟢 `done` | 2026-04-03 |
+| T-09 | `OCREngine` has no swappable interface | structural | 🟢 `done` | 2026-04-03 |
 | T-15 | Trailing `l:` in player prefix should normalize to closing bracket | bug | 🟢 `done` | 2026-04-03 |
 | T-16 | Capital `I` closing-bracket OCR suffix not covered by T-15 | bug | 🟢 `done` | 2026-04-03 |
-| T-17 | T-15 false positive: legitimate names ending in `l` stripped when bracket is missing | bug | ⚫ `deferred` | — |
 | T-18 | `\|` → `I` substitution in `normalize()` corrupts `l`-as-pipe in message content | bug | 🟢 `done` | 2026-04-03 |
 | T-19 | Multi-error lines (no bracket + spaces in name + `l:` suffix) fall through to continuation | bug | 🟢 `done` | 2026-04-03 |
-| T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🔴 `open` | — |
+| T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | ⚫ `deferred` | — |
+| T-17 | T-15 false positive: legitimate names ending in `l` stripped when bracket is missing | bug | ⚫ `deferred` | — |
 
 
 ---
 
 ## Bugs
 
-### T-01 · Y-anchor drift in `reconstruct_lines`
-- **Severity:** bug
-- **State:** 🟢 `done`
-- **File:** `src/ow_chat_logger/image_processing.py:110`
-- **Completed:** 2026-04-03
-
-`current_y` is set to the first box's Y when a new group starts and is never updated while accumulating that group. With `y_merge_threshold=18`, boxes at y=`[0, 15, 30]` produce two groups instead of one: the box at y=30 is compared against y=0 (diff=30 > 18) rather than the most-recent anchor y=15. Real-world OCR on upscaled text regularly returns boxes with gradual Y drift, causing premature line splits.
-
-**Fix direction:** Update `current_y` to the last-seen Y value after each merge, making it a sliding anchor rather than a group-start anchor.
-
-**Test surface:** `tests/test_image_processing.py` — add a case with three boxes showing gradual Y drift within the merge threshold.
-
----
-
-### T-02 · `HERO_PATTERN` too greedy
-- **Severity:** bug
-- **File:** `src/ow_chat_logger/parser.py:9`
-- **State:** 🟢 `done`
-- **Completed:** 2026-04-03
-- **Completed:** —
-
-The hero pattern `^(?P<player>[^()]+)\s*\((?P<hero>[^)]+)\)...` has no bracket requirement on the player name. Any OCR fragment of the form `word (word)` — including partial system messages that slip past `SYSTEM_REGEX` — is silently classified as a hero line. Continuation lines that happen to contain parentheses are also affected.
-
-**Fix direction:** Tighten the pattern. At minimum add a negative assertion to prevent matching lines that start with `[`. Add a guard so a parenthetical in chat content (e.g. `"lol (you wish)"`) doesn't promote to hero.
-
-**Test surface:** `tests/test_parser.py` — add cases for: parenthetical chat content classified as continuation, partial system message not promoted to hero.
-
----
-
-### T-03 · `r"channels"` bare substring in system patterns
-- **Severity:** bug
-- **State:** 🟢 `done`
-- **File:** `src/ow_chat_logger/parser.py:29`
-- **Completed:** 2026-04-03
-
-The pattern `r"channels"` in `SYSTEM_PATTERNS` is a bare substring match with no anchoring or word boundary. Any player chat message containing the word "channels" is silently dropped as a system message.
-
-**Fix direction:** Replace with a more specific pattern scoped to the actual system message context, or remove it and rely solely on the Aho-Corasick fragment matcher which already handles the longer form.
-
-**Test surface:** `tests/test_parser.py` — add a case where a player message contains "channels" and is correctly classified as `standard`, not `system`.
-
----
-
-### T-16 · Capital `I` closing-bracket OCR suffix not covered by T-15
-- **Severity:** bug
-- **State:** 🟢 `done`
-- **File:** `src/ow_chat_logger/parser.py:121`, `src/ow_chat_logger/message_processing.py:24`
-- **Completed:** 2026-04-03
-
-OCR sometimes reads the closing bracket `]` as a capital `I` rather than a lowercase `l`. T-15 fixed the lowercase-`l` variant (`[ZANGETSUI:` should normalize to `[ZANGETSU]:`), but the detection condition in `classify_line` only checks `endswith("l")` and the strip in `normalize_finished_message` only removes lowercase `l`. The capital-`I` case silently passes through with the wrong player name.
-
-**Fix direction:** Extend both the flag condition in `parser.py` (`endswith("l") or endswith("I")`) and the strip in `message_processing.py` to cover capital `I` as a second OCR variant of `]`. Consider renaming `ocr_fix_closing_bracket_l` to `ocr_fix_closing_bracket` or accepting a captured character to strip, to avoid proliferating booleans.
-
-**Test surface:** `tests/test_message_processing.py` — add a regression case where OCR yields a player token with trailing capital `I` (e.g. `[ZANGETSUI:`) and the final normalized line becomes `[ZANGETSU]: ...`.
-
----
-
-### T-17 · T-15 fix creates false positive for legitimate player names ending in `l`
-- **Severity:** bug
-- **State:** ⚫ `deferred`
-- **File:** `src/ow_chat_logger/message_processing.py:24`, `src/ow_chat_logger/parser.py:121`
-- **Completed:** —
-
-The `ocr_fix_closing_bracket_l` guard fires whenever the closing bracket is missing AND the player group ends in `l`. This is also true for players whose names legitimately end in `l` (e.g. `Daniel`, `Nathaniel`, `Michael`). If `[Daniel]` is OCR'd as `[Daniel:` (missing `]`), MISSING_CLOSING_BRACKET_PATTERN matches with `player="Daniel"`, the flag is set, and T-15 strips the `l` — producing the player name `Danie`.
-
-**Current stance:** The tradeoff is accepted. The T-15 heuristic is correct far more often than it fires falsely (the `l`-terminal OCR artifact is a common pattern; player names ending in `l` with a simultaneously missing closing bracket are rare). This task is deferred until a reliable disambiguation approach is identified — e.g. character-level OCR confidence from the backend, or a corpus-based check against known player name patterns.
-
-**Fix direction (when revisited):** A safer guard would use OCR confidence on the terminal character to limit the strip to genuinely low-confidence `l` tokens. Alternatively, constrain to cases where the preceding character is uppercase or a digit (consistent with the bracket-misread context). Do not add a minimum-length check alone — it doesn't help for names like `Nathaniel`.
-
-**Test surface:** `tests/test_message_processing.py` — once a fix direction is chosen, add cases where `[Daniel]:` (bracket correctly present) is not mutated, and `[Daniel:` (bracket missing) is handled without silently mangling the name.
-
----
-
-### T-18 · `|` → `I` substitution in `normalize()` corrupts lowercase `l` in message content
-- **Severity:** bug
-- **State:** 🟢 `done`
-- **File:** `src/ow_chat_logger/parser.py:79`
-- **Completed:** 2026-04-03
-
-`normalize()` applies `text.replace("|", "I")` to the entire raw OCR string before any structural parsing. The intent is to repair player-bracket OCR artifacts where `|` appears in place of `I` in a name. However, Windows OCR also reads lowercase `l` as `|` in certain font/contrast situations. The substitution then produces a capital `I` in message content — e.g. `"lol"` → OCR reads first `l` as `|` → normalize gives `"Iol"` — observed in output as `it's always others fault Iol`.
-
-**Fix direction:** Move the `|` → `I` substitution out of the pre-parse `normalize()` and apply it only to the extracted player token, not to the message body. After structural parsing (STANDARD_PATTERN or variants) splits player from message, apply character-substitution repairs to `player` only. The message body should receive no bracket-repair substitutions.
-
-**Test surface:** `tests/test_parser.py` — add a case where the raw OCR line contains `|` in the message body (e.g. `[A7X]: l|l`) and the normalized output preserves the pipe or restores `l`, rather than emitting capital `I`.
-
----
-
-### T-19 · Multi-error OCR lines (missing bracket + spaces in name + `l:` suffix) fall through to continuation
-- **Severity:** bug
-- **State:** 🟢 `done`
-- **File:** `src/ow_chat_logger/parser.py:113`
-- **Completed:** 2026-04-03
-
-When OCR produces simultaneous errors — missing opening bracket, word-splitting inside the player name, and `]` → `l` — no existing pattern matches. Example: `[A7X]: boris more healing pls` → OCR → `A: 7 X l: boris more healing pls`. MISSING_CLOSING_BRACKET_PATTERN requires `[` at the start. MISSING_OPENING_BRACKET_PATTERN requires a literal `\]` in the player position. The spaced-name variant `A: 7 X` hits neither. The line falls through to `continuation`, where it is silently appended to the previous message or discarded.
-
-**Fix direction:** Add a dedicated pattern for the "no-bracket, whitespace-in-name, `l:`-terminated prefix" form, or generalize MISSING_OPENING_BRACKET_PATTERN to tolerate spaces and `l` in place of `\]`. Keep the match narrow: require the player token to look like an alphanumeric tag (no punctuation other than the suffix) and the suffix to be `l:` or `I:`. Guard against false positives by length-bounding the matched player fragment.
-
-**Test surface:** `tests/test_parser.py` — add a case for `A: 7 X l: boris more healing pls` being classified as `standard` with player `A7X` and message `boris more healing pls`, rather than `continuation`.
-
----
-
-### T-15 - Trailing `l:` in player prefix should normalize to closing bracket
-- **Severity:** bug
-- **State:** 🟢 `done`
-- **File:** `src/ow_chat_logger/message_processing.py:18`
-- **Completed:** 2026-04-03
-
-OCR sometimes reads the closing bracket in the fixed chat prefix as a lowercase `l`, producing outputs like `2026-04-03 12:16:11 | TEAM | A7Xl: hello dogges` instead of the intended `[A7X]: hello dogges`. Because the standard chat format is structurally fixed as `[player]: message`, this is a safe post-processing repair rather than something every parser branch should handle independently.
-
-**Fix direction:** In post-processing, detect standard chat player prefixes that effectively end in `l:` and normalize that suffix to `]:` before the final player/message record is emitted. Keep the correction scoped so it only applies to the fixed bracketed chat structure, not arbitrary message text.
-
-**Test surface:** `tests/test_message_processing.py` - add a regression case where OCR yields a player token with trailing `l` in the chat prefix and the final normalized line becomes `[A7X]: hello dogges`.
-
----
-
 ## Structural Issues
-
-### T-04 · `LazyConfig` write path is not thread-safe
-- **Severity:** structural
-- **State:** 🟢 `done`
-- **File:** `src/ow_chat_logger/config.py:187`
-- **Completed:** 2026-04-03
-
-`LazyConfig.__setitem__` mutates the shared `_cached_config` dict in place — and now also writes into nested profile dicts — with no lock. The `MutableMapping` interface makes this look safe. While no current production code path writes to `CONFIG` from a worker thread, the interface invites it. A concurrent read (from the processing worker) overlapping with a write is a silent data race on plain dicts.
-
-**Fix direction:** Either (a) make `LazyConfig` read-only after startup by removing `__setitem__`/`__delitem__` and narrowing to `Mapping`, or (b) add a `threading.RLock` around all mutations and the cache-population path. Option (a) is safer and reflects actual usage.
-
-**Test surface:** `tests/test_config_helpers.py` — verify the interface contract; if narrowed, ensure test setup via `reset_config()` still works.
-
----
 
 ### T-06 · Redundant `crop_to_screen_region` call on every live frame
 - **Severity:** structural
@@ -180,20 +54,6 @@ OCR sometimes reads the closing bracket in the fixed chat prefix as a lowercase 
 **Fix direction:** Add a `pre_cropped: bool = False` parameter to `extract_chat_debug_data` and skip the crop step in the live path. Analyze and benchmark paths pass full screenshots and still benefit from the crop.
 
 **Test surface:** `tests/test_pipeline.py` — add a case confirming the live path skips cropping when `pre_cropped=True`.
-
----
-
-### T-07 · `DEFAULT_ALLOWLIST` hardcoded for EN+DE regardless of language config
-- **Severity:** structural
-- **State:** ⚫ `deferred`
-- **File:** `src/ow_chat_logger/ocr/easyocr_backend.py:7`
-- **Completed:** —
-
-The default allowlist contains German umlauts (`üäöÜÄÖ`) hardcoded. While the allowlist is now overridable per-profile via `settings.allowlist`, the default still silently mismatches for users with other language configs (e.g. `["en", "fr"]` gets no French characters). The same hardcoded string appears in the Tesseract profile settings in `config.py:116`.
-
-**Fix direction:** Define per-language character additions and build `DEFAULT_ALLOWLIST` dynamically from the configured languages, or at minimum document the limitation clearly and add a config-level override example.
-
-**Test surface:** Validate that a profile with `["en", "fr"]` languages can specify an appropriate allowlist via `settings.allowlist`.
 
 ---
 
@@ -239,20 +99,6 @@ After `processing_thread.join(timeout=1.0)`, `flush_buffers` runs immediately on
 
 ---
 
-### T-20 · Save debug screenshot when a parsing anomaly is detected
-- **Severity:** structural
-- **State:** 🔴 `open`
-- **File:** `src/ow_chat_logger/pipeline.py`, `src/ow_chat_logger/live_runtime.py`
-- **Completed:** —
-
-When the OCR pipeline produces a suspicious result — e.g. a line falls through to `continuation` instead of matching a standard pattern, a player name is stripped by the `ocr_fix_closing_bracket_l` heuristic, or an empty OCR result is returned for a non-blank mask — there is currently no capture of the frame that caused it. Diagnosing these cases requires reproducing the exact screen state, which is often impossible after the fact.
-
-**Fix direction:** Define an anomaly predicate (callable, configurable) that receives the `extract_chat_debug_data` return dict and returns `True` when the frame is considered anomalous. When triggered, save the cropped RGB image (and optionally the team/all masks) to a configurable directory (e.g. `debug_screenshots/`) with a timestamp filename. Wire the predicate into the live runtime loop after `extract_chat_lines`. Keep the save path and the predicate out of the hot path when not triggered.
-
-**Test surface:** `tests/test_pipeline.py` — add a test that invokes the anomaly predicate with a synthetic debug dict containing a `continuation`-only parse result and confirms a file is written to a temp directory.
-
----
-
 ### T-14 · `ocr_engine.py` legacy shim monkey-patches a module-level function in `__init__`
 - **Severity:** structural
 - **State:** 🔴 `open`
@@ -264,6 +110,20 @@ When the OCR pipeline produces a suspicious result — e.g. a line falls through
 **Fix direction:** Investigate why the patch is needed and address the root cause. If it's purely for test mocking, use `unittest.mock.patch` in tests rather than patching in the constructor. Remove the monkey-patch from production code.
 
 **Test surface:** `tests/test_ocr_engine.py` — verify the legacy `OCREngine` constructs correctly without the monkey-patch.
+
+---
+
+### T-20 · Save debug screenshot when a parsing anomaly is detected
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/pipeline.py`, `src/ow_chat_logger/live_runtime.py`
+- **Completed:** —
+
+When the OCR pipeline produces a suspicious result — e.g. a line falls through to `continuation` instead of matching a standard pattern, a player name is stripped by the `ocr_fix_closing_bracket_l` heuristic, or an empty OCR result is returned for a non-blank mask — there is currently no capture of the frame that caused it. Diagnosing these cases requires reproducing the exact screen state, which is often impossible after the fact.
+
+**Fix direction:** Define an anomaly predicate (callable, configurable) that receives the `extract_chat_debug_data` return dict and returns `True` when the frame is considered anomalous. When triggered, save the cropped RGB image (and optionally the team/all masks) to a configurable directory (e.g. `debug_screenshots/`) with a timestamp filename. Wire the predicate into the live runtime loop after `extract_chat_lines`. Keep the save path and the predicate out of the hot path when not triggered.
+
+**Test surface:** `tests/test_pipeline.py` — add a test that invokes the anomaly predicate with a synthetic debug dict containing a `continuation`-only parse result and confirms a file is written to a temp directory.
 
 ---
 
@@ -297,18 +157,164 @@ An old `INTER_NEAREST` version of `clean_mask` lives as a comment block below th
 
 ---
 
-## Completed
+### T-21 · `SYSTEM_PATTERNS` contains redundant `.*` prefixes
+- **Severity:** smell
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/parser.py:34-47`
+- **Completed:** —
+
+All 14 entries in `SYSTEM_PATTERNS` use a `.*` prefix (e.g. `r".*left the game"`). `SYSTEM_REGEX` is compiled and searched via `SYSTEM_REGEX.search(line)`, which already scans the full string — the `.*` prefix is always redundant and makes the patterns harder to read.
+
+**Fix direction:** Remove the `.*` from all pattern strings in `SYSTEM_PATTERNS`. No behavioral change.
+
+**Test surface:** No new tests needed. Verify existing parser tests still pass.
+
+---
+
+### T-22 · `_effective_scale_factor` computed twice per resize call
+- **Severity:** smell
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/image_processing.py:63-68`
+- **Completed:** —
+
+`clean_mask_steps` calls `_effective_scale_factor(cfg)` twice — once for `fx` and once for `fy` — in the same `cv2.resize` call. The function is deterministic for a given `cfg`, so this is safe but wasteful and inconsistent (if the function ever became non-deterministic, fx and fy could diverge).
+
+**Fix direction:** Assign the result to a local variable once, then use it for both `fx` and `fy`.
+
+**Test surface:** No new tests needed. Verify existing image processing tests still pass.
+
+---
+
+### T-25 · Inline error-case dict in `run_benchmark` duplicates `_unavailable_case` structure
+- **Severity:** smell
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/benchmark.py:288-319`
+- **Completed:** —
+
+The `except Exception` branch in `run_benchmark` builds a 30-line inline dict that is structurally identical to the return value of `_unavailable_case`, differing only in `status: "error"`. This duplication means any schema change to benchmark result rows must be applied in two places. The error-case dict is also missing some fields relative to `_unavailable_case` (e.g. `fixture_path`, `expected_path` are present in `_unavailable_case` but the inline dict uses `str(png_path.resolve())` directly).
+
+**Fix direction:** Extract an `_error_case(*, png_path, expected_path, profile_name, engine_id, message)` helper following the same signature pattern as `_unavailable_case`, with `status="error"`.
+
+**Test surface:** `tests/test_benchmark.py` — verify error-case rows have the same schema as unavailable-case rows.
+
+---
+
+## Completed and Deferred
+
+### T-01 · Y-anchor drift in `reconstruct_lines`
+- **Severity:** bug
+- **State:** 🟢 `done`
+- **File:** `src/ow_chat_logger/image_processing.py:110`
+- **Completed:** 2026-04-03
+
+`current_y` is set to the first box's Y when a new group starts and is never updated while accumulating that group. With `y_merge_threshold=18`, boxes at y=`[0, 15, 30]` produce two groups instead of one: the box at y=30 is compared against y=0 (diff=30 > 18) rather than the most-recent anchor y=15. Real-world OCR on upscaled text regularly returns boxes with gradual Y drift, causing premature line splits.
+
+**Fix direction:** Update `current_y` to the last-seen Y value after each merge, making it a sliding anchor rather than a group-start anchor.
+
+---
+
+### T-02 · `HERO_PATTERN` too greedy
+- **Severity:** bug
+- **File:** `src/ow_chat_logger/parser.py:9`
+- **State:** 🟢 `done`
+- **Completed:** 2026-04-03
+
+The hero pattern `^(?P<player>[^()]+)\s*\((?P<hero>[^)]+)\)...` has no bracket requirement on the player name. Any OCR fragment of the form `word (word)` — including partial system messages that slip past `SYSTEM_REGEX` — is silently classified as a hero line. Continuation lines that happen to contain parentheses are also affected.
+
+---
+
+### T-03 · `r"channels"` bare substring in system patterns
+- **Severity:** bug
+- **State:** 🟢 `done`
+- **File:** `src/ow_chat_logger/parser.py:29`
+- **Completed:** 2026-04-03
+
+The pattern `r"channels"` in `SYSTEM_PATTERNS` is a bare substring match with no anchoring or word boundary. Any player chat message containing the word "channels" is silently dropped as a system message.
+
+---
+
+### T-04 · `LazyConfig` write path is not thread-safe
+- **Severity:** structural
+- **State:** 🟢 `done`
+- **File:** `src/ow_chat_logger/config.py:187`
+- **Completed:** 2026-04-03
+
+`LazyConfig.__setitem__` mutated the shared `_cached_config` dict in place with no lock.
+
+---
 
 ### T-05 · `OCREngine` stored thresholds that were never used
 - **Severity:** structural
 - **State:** 🟢 `done`
 - **Completed:** 2026-04-03
 
-Resolved by the OCR modularisation. Each backend now owns its thresholds as instance state (e.g. `EasyOCRBackend.confidence_threshold`). The pipeline calls `ocr.run(mask)` with no threshold arguments — backends consume their own settings. The old dual-ownership problem is gone.
+Resolved by the OCR modularisation. Each backend now owns its thresholds as instance state.
+
+---
 
 ### T-09 · `OCREngine` had no swappable interface
 - **Severity:** structural
 - **State:** 🟢 `done`
 - **Completed:** 2026-04-03
 
-Resolved by the OCR modularisation. `base.py` defines `OCRBackend` (Protocol) and `BaseOCRBackend` (ABC with `@abstractmethod run()`). Three backends implement it: `WindowsOCRBackend`, `EasyOCRBackend`, `TesseractOCRBackend`. `registry.py` provides `build_ocr_backend(profile)` factory. `ocr_engine.py` is now a thin legacy shim wrapping the Windows backend.
+Resolved by the OCR modularisation. `base.py` defines `OCRBackend` (Protocol) and `BaseOCRBackend` (ABC with `@abstractmethod run()`). Three backends implement it. `registry.py` provides `build_ocr_backend(profile)` factory. `ocr_engine.py` is now a thin legacy shim.
+
+---
+
+### T-15 · Trailing `l:` in player prefix should normalize to closing bracket
+- **Severity:** bug
+- **State:** 🟢 `done`
+- **File:** `src/ow_chat_logger/message_processing.py:18`
+- **Completed:** 2026-04-03
+
+OCR sometimes reads the closing bracket as lowercase `l`, producing `[A7Xl: hello` instead of `[A7X]: hello`.
+
+---
+
+### T-16 · Capital `I` closing-bracket OCR suffix not covered by T-15
+- **Severity:** bug
+- **State:** 🟢 `done`
+- **File:** `src/ow_chat_logger/parser.py:121`, `src/ow_chat_logger/message_processing.py:24`
+- **Completed:** 2026-04-03
+
+Extended the flag condition and strip to cover capital `I` as a second OCR variant of `]`.
+
+---
+
+### T-18 · `|` → `I` substitution in `normalize()` corrupts lowercase `l` in message content
+- **Severity:** bug
+- **State:** 🟢 `done`
+- **File:** `src/ow_chat_logger/parser.py:79`
+- **Completed:** 2026-04-03
+
+Moved the `|` → `I` substitution out of the pre-parse `normalize()` so it only applies to the extracted player token.
+
+---
+
+### T-19 · Multi-error OCR lines fall through to continuation
+- **Severity:** bug
+- **State:** 🟢 `done`
+- **File:** `src/ow_chat_logger/parser.py:113`
+- **Completed:** 2026-04-03
+
+Added `NO_BRACKET_SPACED_NAME_PATTERN` to handle the case where both brackets are missing, the player name has spaces, and `]` is misread as `l` or `I`.
+
+---
+
+### T-07 · `DEFAULT_ALLOWLIST` hardcoded for EN+DE regardless of language config
+- **Severity:** structural
+- **State:** ⚫ `deferred`
+- **File:** `src/ow_chat_logger/ocr/easyocr_backend.py:7`
+- **Completed:** —
+
+Default allowlist contains German umlauts hardcoded; mismatches for other language configs. Deferred until a clean per-language character-set registry approach is designed.
+
+---
+
+### T-17 · T-15 fix creates false positive for legitimate player names ending in `l`
+- **Severity:** bug
+- **State:** ⚫ `deferred`
+- **File:** `src/ow_chat_logger/message_processing.py:24`, `src/ow_chat_logger/parser.py:121`
+- **Completed:** —
+
+The `ocr_fix_closing_bracket` guard fires for players whose names legitimately end in `l` (e.g. `Daniel`, `Nathaniel`). Tradeoff accepted — the heuristic is correct far more often than it fires falsely. Deferred until OCR character-level confidence or a corpus-based player name check is available.
