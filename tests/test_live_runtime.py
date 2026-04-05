@@ -103,7 +103,7 @@ def test_extract_chat_lines_for_live_records_metrics(monkeypatch):
 
     monkeypatch.setattr(
         "ow_chat_logger.live_runtime.extract_chat_debug_data",
-        lambda image, ocr, should_run_ocr=None, ocr_profile=None: {
+        lambda image, ocr, should_run_ocr=None, ocr_profile=None, **kwargs: {
             "timings": {
                 "preprocess_seconds": 0.01,
                 "ocr_seconds": 0.02,
@@ -136,7 +136,7 @@ def test_extract_chat_lines_for_live_skips_ocr_for_nearly_empty_masks(monkeypatc
     cfg_module.load_config()
     monkeypatch.setitem(cfg_module._cached_config, "min_mask_nonzero_pixels_for_ocr", 2)
 
-    def fake_debug_data(image, ocr, should_run_ocr=None, ocr_profile=None):
+    def fake_debug_data(image, ocr, should_run_ocr=None, ocr_profile=None, **kwargs):
         team_mask = np.array([[255, 0], [0, 0]], dtype=np.uint8)
         all_mask = np.array([[255, 255], [0, 0]], dtype=np.uint8)
         return {
@@ -174,7 +174,7 @@ def test_extract_chat_lines_for_live_records_skip_flags(monkeypatch):
 
     monkeypatch.setattr(
         "ow_chat_logger.live_runtime.extract_chat_debug_data",
-        lambda image, ocr, should_run_ocr=None, ocr_profile=None: {
+        lambda image, ocr, should_run_ocr=None, ocr_profile=None, **kwargs: {
             "timings": {
                 "preprocess_seconds": 0.01,
                 "ocr_seconds": 0.02,
