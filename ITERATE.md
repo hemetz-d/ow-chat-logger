@@ -1,7 +1,8 @@
 # Iteration Process
 
-> **Before anything else: `git pull`**
+> **Before anything else pull get the latest changes: `git pull --rebase origin master`**
 > Do not read the task list, do not select a task, until this has run.
+> If conflicts happen, stop and notify about it.
 
 This document defines how each task in `TASKS.md` is approached, reviewed, and closed. The goal is to keep changes small, verifiable, and human-confirmed before moving on.
 
