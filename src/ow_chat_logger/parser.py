@@ -45,6 +45,7 @@ SYSTEM_PATTERNS = [
     r".*player in channel.*",
     r".*players in channel.*",
     r".*to access voice.*",
+    r"Warning! You're voting to ban your teammate's preferred hero",
 ]
 
 # Single-character OCR corrections: maps misread char → canonical char.

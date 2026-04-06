@@ -170,6 +170,12 @@ def test_multi_error_does_not_eat_hero_lines():
     assert r["category"] == "hero"
 
 
+def test_hero_ban_vote_warning_is_system():
+    """T-27: hero-ban vote warning must be classified as system, not continuation."""
+    r = classify_line("Warning! You're voting to ban your teammate's preferred hero.")
+    assert r["category"] == "system"
+
+
 def test_contains_fragment_detects_system_message_fragment():
     assert contains_fragment("remember to act responsibly and report anything offensive")
 
