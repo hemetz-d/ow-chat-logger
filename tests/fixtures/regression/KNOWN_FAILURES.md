@@ -10,7 +10,7 @@ These failures are **pre-existing** — they were present before the T-26 normal
 
 OCR either did not detect the line at all, or the parsed message was silently dropped by a filter.
 
-### example_9 — `[marcyl7]: :)`
+### example_09 — `[marcyl7]: :)`
 - **Channel:** team_lines
 - **Missing:** `[marcyl7]: :)`
 - **Root cause candidate:** The message content is just `:)` (2 chars). The `msg.isdigit()` filter doesn't explain it, but very short emoji-like tokens may fall below OCR confidence or the line may not survive `reconstruct_lines` grouping. Worth checking raw OCR output from this screenshot.
@@ -38,7 +38,7 @@ The buffer treats a new player's next line as a continuation of the previous mes
 - **Actual one record:** `[A7X]: sup dawgs xdd`
 - **Root cause:** OCR reads `[A7X]: xdd` without its brackets — probably `A7X]: xdd` or `A7X xdd` — which fails all player-prefix patterns and lands in `continuation`. The buffer appends it to the in-flight A7X message.
 
-### example_5 — `[Flea]: cipe` + `[Cipe]: YO` → `[Flea]: Cipe YO`
+### example_05 — `[Flea]: cipe` + `[Cipe]: YO` → `[Flea]: Cipe YO`
 - **Channel:** team_lines
 - **Expected two records:** `[Flea]: cipe` and `[Cipe]: YO`
 - **Actual one record:** `[Flea]: Cipe YO`
@@ -50,7 +50,7 @@ The buffer treats a new player's next line as a continuation of the previous mes
 
 Text from adjacent UI elements (scorecard, system notifications, hero names) leaks into the chat region and OCR picks it up as a continuation of the last real message.
 
-### example_2 — `[MrHenderson]: you guys suck baalls enekleA`
+### example_02 — `[MrHenderson]: you guys suck baalls enekleA`
 - **Channel:** all_lines
 - **Expected:** `[MrHenderson]: you guys suck baalls`
 - **Actual:** `[MrHenderson]: you guys suck baalls enekleA`
@@ -76,7 +76,7 @@ Text from adjacent UI elements (scorecard, system notifications, hero names) lea
 
 ## Class D · Character-level confusion in player name
 
-### example_4 — `Cipe` read as `Oipe`
+### example_04 — `Cipe` read as `Oipe`
 - **Channel:** team_lines
 - **Expected:** `[Cipe]: i die and change`
 - **Actual:** `[Oipe]: i die and change`

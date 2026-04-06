@@ -153,7 +153,7 @@ def test_run_analyze_report_matches_existing_regression_expectation(monkeypatch,
     fixture_path = tmp_dir / "fixture.png"
     fixture_path.write_bytes(b"placeholder")
     expected_path = (
-        Path(__file__).resolve().parent / "fixtures" / "regression" / "example_1.expected.json"
+        Path(__file__).resolve().parent / "fixtures" / "regression" / "example_01.expected.json"
     )
     expected = json.loads(expected_path.read_text(encoding="utf-8"))
 

@@ -28,6 +28,11 @@ pytestmark = pytest.mark.ocr
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "regression"
 
 
+def _natural_sort_key(path: Path) -> list[int | str]:
+    parts = re.split(r"(\d+)", path.stem)
+    return [int(part) if part.isdigit() else part.lower() for part in parts]
+
+
 def _load_rgb(path: Path) -> np.ndarray:
     bgr = cv2.imread(str(path))
     assert bgr is not None, f"could not read image: {path}"
@@ -89,7 +94,7 @@ def _discover_cases() -> list[tuple[Path, Path]]:
     if not FIXTURE_DIR.is_dir():
         return []
     out: list[tuple[Path, Path]] = []
-    for png in sorted(FIXTURE_DIR.glob("*.png")):
+    for png in sorted(FIXTURE_DIR.glob("*.png"), key=_natural_sort_key):
         expected = FIXTURE_DIR / f"{png.stem}.expected.json"
         if expected.is_file():
             out.append((png, expected))
