@@ -13,6 +13,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | ID | Title | Severity | State | Completed |
 |----|-------|----------|-------|-----------|
 | T-06 | Redundant crop on every live frame | structural | 🟢 `done` | 2026-04-06 |
+| T-26 | OCR character-pair ambiguity: `,`/`.` and `=`/`-` | smell | 🟢 `done` | 2026-04-06 |
 | T-08 | Shutdown race on buffer flush | structural | 🔴 `open` | — |
 | T-10 | Dead commented-out code | smell | 🔴 `open` | — |
 | T-11 | CLI `--metrics` asymmetric flag | smell | 🔴 `open` | — |
@@ -182,6 +183,36 @@ All 14 entries in `SYSTEM_PATTERNS` use a `.*` prefix (e.g. `r".*left the game"`
 **Fix direction:** Assign the result to a local variable once, then use it for both `fx` and `fy`.
 
 **Test surface:** No new tests needed. Verify existing image processing tests still pass.
+
+---
+
+### T-26 · OCR character-pair ambiguity: `,`/`.` and `=`/`-`
+
+- **Severity:** smell
+- **State:** 🟢 `done`
+- **File:** `src/ow_chat_logger/parser.py:50`, `tests/fixtures/regression/example_6.expected.json`
+- **Completed:** 2026-04-06
+
+OCR regularly confuses two visually similar character pairs in message content:
+- `,` ↔ `.` (comma vs period)
+- `=` ↔ `-` (equals vs minus)
+
+This causes two separate problems:
+
+1. **Dedup false negatives.** The same message captured on two consecutive frames may be logged twice if OCR produces different characters each time. `DuplicateFilter` uses a raw string key, so `"hello."` and `"hello,"` are treated as distinct messages.
+
+2. **Regression test fragility.** `_assert_channel_lines_match` compares exact strings; a test whose expected JSON was written with `.` will fail if OCR returns `,` for the same screenshot, or vice versa.
+
+**Options considered:**
+
+- **A — Test-only normalization** (`_norm_line` in `test_regression_screenshots.py`): canonicalize the pairs inside `_assert_channel_lines_match` before comparing. Regression tests become tolerant; production behavior is untouched; no expected JSON files need updating. Most surgical for the test problem.
+- **B — Parser-level normalization** (`parser.normalize()`): pick one canonical character per pair (e.g. `.` and `-`) before parsing. Dedup and tests are both fixed; expected JSON files must use the canonical form; logs show canonical chars instead of raw OCR.
+- **C — Dedup-key normalization only**: apply a normalization function to the key passed to `DuplicateFilter.is_new`. Fixes dedup false negatives; regression tests remain fragile unless combined with A.
+- **D — Both A and C**: each problem fixed at the appropriate layer (test comparison tolerance + dedup key normalization) without mutating logged output.
+
+**Recommended fix direction:** Option D. Apply key normalization at the `chat_dedup` / `hero_dedup` call sites in `message_processing.py`, and extend `_norm_line` in `test_regression_screenshots.py` to canonicalize the two pairs. No production output is changed; both failure modes are addressed.
+
+**Test surface:** `tests/test_regression_screenshots.py` (tolerance in comparison), `tests/test_deduplication.py` (verify that messages differing only in `,`/`.` or `=`/`-` are deduplicated as one).
 
 ---
 
