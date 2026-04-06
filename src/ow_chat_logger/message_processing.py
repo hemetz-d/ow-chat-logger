@@ -6,6 +6,7 @@ from typing import Any
 
 from ow_chat_logger.buffer import MessageBuffer
 from ow_chat_logger.config import IGNORED_SENDERS
+from ow_chat_logger.hero_roster import canonicalize_hero_name
 
 REPORT_SUFFIX_RE = re.compile(r"\s*\[\s*report\s*\]\s*$", re.IGNORECASE)
 
@@ -39,6 +40,7 @@ def normalize_finished_message(finished, chat_type):
         }
 
     if category == "hero":
+        hero = canonicalize_hero_name(hero)
         if not hero:
             return None
         return {

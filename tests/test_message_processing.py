@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 from ow_chat_logger.buffer import MessageBuffer
 from ow_chat_logger.message_processing import (
+    normalize_finished_message,
     collect_screenshot_messages,
     process_finished,
     process_lines,
@@ -210,5 +211,71 @@ def test_collect_screenshot_messages_strips_report_suffix_for_hero_lines_when_en
 
     assert actual == {
         "team_lines": ["MiniNinja (Bastion): We need a healer"],
+        "all_lines": [],
+    }
+
+
+def test_normalize_finished_message_canonicalizes_hero_variants():
+    actual = normalize_finished_message(
+        {
+            "category": "hero",
+            "player": "MiniNinja",
+            "hero": "D. Va",
+            "msg": "group up",
+        },
+        "team",
+    )
+
+    assert actual["hero"] == "D.Va"
+
+
+def test_normalize_finished_message_drops_unknown_hero():
+    actual = normalize_finished_message(
+        {
+            "category": "hero",
+            "player": "MiniNinja",
+            "hero": "DefinitelyNotAHero",
+            "msg": "group up",
+        },
+        "team",
+    )
+
+    assert actual is None
+
+
+def test_process_finished_dedups_canonicalized_hero_variants():
+    hero_dedup = MagicMock()
+    hero_dedup.is_new.return_value = True
+    hero_logger = MagicMock()
+
+    process_finished(
+        {
+            "category": "hero",
+            "player": "MiniNinja",
+            "hero": "D Va",
+            "msg": "group up",
+        },
+        "team",
+        chat_dedup=MagicMock(),
+        hero_dedup=hero_dedup,
+        chat_logger=MagicMock(),
+        hero_logger=hero_logger,
+    )
+
+    hero_dedup.is_new.assert_called_once_with("MiniNinja|D.Va")
+    hero_logger.log.assert_called_once()
+
+
+def test_collect_screenshot_messages_canonicalizes_hero_name_when_enabled():
+    actual = collect_screenshot_messages(
+        {
+            "team": ["MiniNinja (Lucio): We need a healer"],
+            "all": [],
+        },
+        include_hero_lines=True,
+    )
+
+    assert actual == {
+        "team_lines": ["MiniNinja (Lúcio): We need a healer"],
         "all_lines": [],
     }

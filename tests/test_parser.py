@@ -81,6 +81,12 @@ def test_classify_hero():
     assert r["msg"] == "hello"
 
 
+def test_classify_hero_preserves_raw_hero_text_for_later_canonicalization():
+    r = classify_line("Alice (D. Va): hello")
+    assert r["category"] == "hero"
+    assert r["hero"] == "D. Va"
+
+
 @pytest.mark.parametrize(
     "line",
     [
