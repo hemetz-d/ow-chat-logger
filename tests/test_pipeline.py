@@ -39,7 +39,6 @@ def test_extract_chat_lines_uses_ocr_per_channel():
             "all_hsv_upper": [179, 255, 255],
             "scale_factor": 1,
             "y_merge_threshold": 100,
-            "min_ocr_box_height": 0,
         },
     )
 
@@ -77,7 +76,6 @@ def test_extract_chat_debug_data_skips_crop_when_pre_cropped():
             "screen_region": (50, 400, 500, 600),
             "scale_factor": 1,
             "y_merge_threshold": 100,
-            "min_ocr_box_height": 0,
         },
         pre_cropped=True,
     )

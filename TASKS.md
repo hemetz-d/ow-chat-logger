@@ -26,7 +26,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-25 | Inline error-case dict in `run_benchmark` duplicates `_unavailable_case` | smell | 🔴 `open` | — |
 | T-27 | Add hero-ban vote warning to `SYSTEM_PATTERNS` | smell | 🔴 `open` | — |
 | T-28 | Prevent continuation across large vertical gap | structural | 🔴 `open` | — |
-| T-29 | Filter sub-height OCR bounding boxes | bug | 🔴 `open` | — |
+| T-29 | Filter sub-height OCR bounding boxes | bug | 🔵 `review` | — |
 | T-30 | Improve team-chat color masking for blue-on-blue scenarios | structural | 🔴 `open` | — |
 | T-01 | Y-anchor drift in `reconstruct_lines` | bug | 🟢 `done` | 2026-04-03 |
 | T-02 | `HERO_PATTERN` too greedy | bug | 🟢 `done` | 2026-04-03 |
@@ -250,7 +250,7 @@ The continuation buffer appends any unrecognised OCR fragment to the last open p
 
 ### T-29 · Filter sub-height OCR bounding boxes
 - **Severity:** bug
-- **State:** 🔴 `open`
+- **State:** 🔵 `review`
 - **File:** `src/ow_chat_logger/image_processing.py` (`reconstruct_lines`)
 - **Completed:** —
 

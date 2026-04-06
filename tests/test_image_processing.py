@@ -10,7 +10,7 @@ def _box(x0, y0, w, h):
 
 
 def test_reconstruct_lines_merges_same_row():
-    cfg = {"y_merge_threshold": 100, "min_ocr_box_height": 0}
+    cfg = {"y_merge_threshold": 100}
     results = [
         (_box(0, 0, 10, 10), "hello", 0.9),
         (_box(50, 2, 10, 10), "world", 0.9),
@@ -20,7 +20,7 @@ def test_reconstruct_lines_merges_same_row():
 
 
 def test_reconstruct_lines_splits_different_rows():
-    cfg = {"y_merge_threshold": 5, "min_ocr_box_height": 0}
+    cfg = {"y_merge_threshold": 5}
     results = [
         (_box(0, 0, 10, 10), "a", 0.9),
         (_box(0, 50, 10, 10), "b", 0.9),
@@ -33,11 +33,33 @@ def test_reconstruct_lines_empty():
     assert reconstruct_lines([], {"y_merge_threshold": 10}) == []
 
 
-def test_reconstruct_lines_drops_short_line_below_min_height():
-    cfg = {"y_merge_threshold": 20, "min_ocr_box_height": 60}
+def test_reconstruct_lines_filters_subheight_line_via_median():
+    """A line whose max bounding-box height is below (fraction × median) is discarded.
+
+    box1: center-y=35, height=70 → line max height 70
+    box2: center-y=65, height=10 → separate line (diff 30 > y_merge_threshold=20), max height 10
+    median of line heights = median([70, 10]) = 40
+    threshold = 0.55 × 40 = 22 → box2 line (height 10) < 22 → filtered.
+    """
+    cfg = {"y_merge_threshold": 20, "min_box_height_fraction": 0.55}
     results = [
-        (_box(0, 0, 200, 72), "[Alice]: hello", 0.9),
-        (_box(500, 300, 120, 42), "Moico chat", 0.9),
+        (_box(0, 0, 200, 70), "[Alice]: hello", 0.9),
+        (_box(210, 60, 80, 10), "enekleA", 0.8),
+    ]
+    lines = reconstruct_lines(results, cfg)
+    assert lines == ["[Alice]: hello"]
+
+
+def test_reconstruct_lines_drops_subheight_line_below_fraction_threshold():
+    """A line whose max height is below (fraction × median) is dropped.
+
+    line1: height=80 (normal), line2: height=20 (garbage, 25% of normal).
+    median([80, 20]) = 50, threshold = 0.5 × 50 = 25 → 20 < 25 → filtered.
+    """
+    cfg = {"y_merge_threshold": 20, "min_box_height_fraction": 0.5}
+    results = [
+        (_box(0, 0, 200, 80), "[Alice]: hello", 0.9),
+        (_box(0, 300, 120, 20), "garbage", 0.9),
     ]
 
     lines = reconstruct_lines(results, cfg)
@@ -45,16 +67,21 @@ def test_reconstruct_lines_drops_short_line_below_min_height():
     assert lines == ["[Alice]: hello"]
 
 
-def test_reconstruct_lines_keeps_line_at_or_above_min_height():
-    cfg = {"y_merge_threshold": 20, "min_ocr_box_height": 60}
+def test_reconstruct_lines_keeps_line_above_fraction_threshold():
+    """A line whose max height is at or above (fraction × median) is kept.
+
+    line1: height=80, line2: height=70 (87% of median ≈ 75).
+    median([80, 70]) = 75, threshold = 0.5 × 75 = 37.5 → 70 > 37.5 → kept.
+    """
+    cfg = {"y_merge_threshold": 20, "min_box_height_fraction": 0.5}
     results = [
-        (_box(0, 0, 200, 72), "[Alice]: hello", 0.9),
-        (_box(500, 120, 120, 66), "epci", 0.9),
+        (_box(0, 0, 200, 80), "[Alice]: hello", 0.9),
+        (_box(0, 200, 120, 70), "[Bob]: world", 0.9),
     ]
 
     lines = reconstruct_lines(results, cfg)
 
-    assert lines == ["[Alice]: hello", "epci"]
+    assert lines == ["[Alice]: hello", "[Bob]: world"]
 
 
 def test_reconstruct_lines_sliding_y_anchor():
@@ -63,7 +90,7 @@ def test_reconstruct_lines_sliding_y_anchor():
     With a fixed group-start anchor, y=30 is compared against y=0 (diff=30>18)
     and splits incorrectly. A sliding anchor compares y=30 against y=15 (diff=15<18).
     """
-    cfg = {"y_merge_threshold": 18, "min_ocr_box_height": 0}
+    cfg = {"y_merge_threshold": 18}
     results = [
         (_box(0, 0, 10, 10), "a", 0.9),
         (_box(20, 15, 10, 10), "b", 0.9),
@@ -82,7 +109,7 @@ def test_reconstruct_lines_short_char_stays_on_same_line():
     With threshold=14, top-y grouping misclassifies 'u' into a separate group
     (diff=20 > 14), while center-y grouping correctly keeps it with the line.
     """
-    cfg = {"y_merge_threshold": 14, "min_ocr_box_height": 0}
+    cfg = {"y_merge_threshold": 14}
     # tall box: top=0, height=40 → center_y=20
     # short box: top=20, height=20 → center_y=30  (top-y diff from fck = 20 > 14)
     # tall box: top=2, height=36 → center_y=20

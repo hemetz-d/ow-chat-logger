@@ -131,15 +131,30 @@ def reconstruct_lines(results, config: Optional[Mapping[str, Any]] = None):
     if current:
         lines.append(current)
 
+    # Compute per-line max bounding-box height for filtering.
+    def _line_max_h(line):
+        return max(
+            (max(float(p[1]) for p in bbox) - min(float(p[1]) for p in bbox))
+            for bbox, _ in line
+        ) if line else 0.0
+
+    line_max_heights = [_line_max_h(line) for line in lines]
+
+    # Median-relative line height threshold: drop lines whose tallest box is
+    # below (fraction × median line height).  A single-line result is never
+    # filtered — its height trivially equals the median, so it always passes.
+    fraction = float(cfg.get("min_box_height_fraction", 0.0))
+    if fraction > 0.0:
+        median_line_h = float(np.median(line_max_heights))
+        fraction_threshold = fraction * median_line_h
+    else:
+        fraction_threshold = 0.0
+
     merged = []
-    for line in lines:
-        line.sort(key=lambda x: x[0][0][0])
-        heights = []
-        for bbox, _ in line:
-            ys = [float(point[1]) for point in bbox]
-            heights.append(max(ys) - min(ys))
-        if heights and max(heights) < cfg.get("min_ocr_box_height", 60):
+    for line, max_h in zip(lines, line_max_heights):
+        if fraction_threshold > 0.0 and max_h < fraction_threshold:
             continue
+        line.sort(key=lambda x: x[0][0][0])
         merged.append(" ".join(t for _, t in line))
 
     return merged
