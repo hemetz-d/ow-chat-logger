@@ -43,7 +43,9 @@ Pick the next task from `TASKS.md`. Priority order by default:
 
 Skip tasks with state `deferred` — they are on hold by design. Skip tasks with state `review` or `done` — they are already handled. Only pick from `open` tasks.
 
-Update the task state to `in-progress` in `TASKS.md` (both the tracking table at the **top** and the detailed entry) before making any changes.
+**Present the selected task to the human and wait for explicit acceptance before proceeding.** Show the task ID, title, severity, and a one-line summary of the intended fix. Do not update `TASKS.md`, read source files, or run any tests until the human confirms.
+
+If the human rejects the task, pick the next candidate by priority and repeat the proposal step.
 
 ### 2. Understand
 
