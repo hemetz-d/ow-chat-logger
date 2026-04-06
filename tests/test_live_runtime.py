@@ -32,13 +32,19 @@ def test_latest_frame_queue_drops_oldest_item():
 def test_processing_worker_drains_queue_after_stop(monkeypatch):
     processed = []
 
-    def fake_extract_chat_lines(screenshot, ocr, ocr_profile=None, metrics=None):
+    def fake_extract_chat_debug_data(screenshot, ocr, **kwargs):
         processed.append(screenshot)
-        return {"team": ["[Alice] : hi"], "all": []}
+        return {
+            "raw_lines": {"team": ["[Alice] : hi"], "all": []},
+            "raw_line_ys": {"team": [], "all": []},
+            "timings": {"preprocess_seconds": 0, "ocr_seconds": 0, "parse_seconds": 0},
+            "ocr_skipped": {"team": False, "all": False},
+            "ocr_results": {"team": [], "all": []},
+        }
 
     monkeypatch.setattr(
-        "ow_chat_logger.live_runtime.extract_chat_lines_for_live",
-        fake_extract_chat_lines,
+        "ow_chat_logger.live_runtime.extract_chat_debug_data",
+        fake_extract_chat_debug_data,
     )
 
     frame_queue = LatestFrameQueue(maxsize=2)

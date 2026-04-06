@@ -103,10 +103,18 @@ def _bbox_center_y(bbox) -> float:
     return (min(ys) + max(ys)) / 2.0
 
 
-def reconstruct_lines(results, config: Optional[Mapping[str, Any]] = None):
+def _reconstruct(
+    results, config: Optional[Mapping[str, Any]] = None
+) -> tuple[list[tuple[str, float]], float]:
+    """Core reconstruction.
+
+    Returns ``(pairs, median_line_h)`` where ``pairs`` is a list of
+    ``(text, center_y)`` sorted top-to-bottom and ``median_line_h`` is the
+    median bounding-box height across all reconstructed lines (0.0 when empty).
+    """
     cfg = _cfg(config)
     if not results:
-        return []
+        return [], 0.0
 
     results.sort(key=lambda x: _bbox_center_y(x[0]))
 
@@ -138,23 +146,37 @@ def reconstruct_lines(results, config: Optional[Mapping[str, Any]] = None):
             for bbox, _ in line
         ) if line else 0.0
 
+    def _line_center_y(line):
+        return min(_bbox_center_y(bbox) for bbox, _ in line)
+
     line_max_heights = [_line_max_h(line) for line in lines]
+    line_ys = [_line_center_y(line) for line in lines]
+
+    median_line_h = float(np.median(line_max_heights)) if line_max_heights else 0.0
 
     # Median-relative line height threshold: drop lines whose tallest box is
     # below (fraction × median line height).  A single-line result is never
     # filtered — its height trivially equals the median, so it always passes.
     fraction = float(cfg.get("min_box_height_fraction", 0.0))
-    if fraction > 0.0:
-        median_line_h = float(np.median(line_max_heights))
-        fraction_threshold = fraction * median_line_h
-    else:
-        fraction_threshold = 0.0
+    fraction_threshold = fraction * median_line_h if fraction > 0.0 else 0.0
 
-    merged = []
-    for line, max_h in zip(lines, line_max_heights):
+    result = []
+    for line, max_h, y in zip(lines, line_max_heights, line_ys):
         if fraction_threshold > 0.0 and max_h < fraction_threshold:
             continue
         line.sort(key=lambda x: x[0][0][0])
-        merged.append(" ".join(t for _, t in line))
+        result.append((" ".join(t for _, t in line), y))
 
-    return merged
+    return result, median_line_h
+
+
+def reconstruct_lines(results, config: Optional[Mapping[str, Any]] = None) -> list[str]:
+    pairs, _ = _reconstruct(results, config)
+    return [text for text, _ in pairs]
+
+
+def reconstruct_lines_with_ys(
+    results, config: Optional[Mapping[str, Any]] = None
+) -> tuple[list[tuple[str, float]], float]:
+    """Like reconstruct_lines but also returns each line's Y and the median line height."""
+    return _reconstruct(results, config)

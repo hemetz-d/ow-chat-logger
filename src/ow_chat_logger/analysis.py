@@ -129,7 +129,11 @@ def run_analyze(args) -> int:
         ocr,
         ocr_profile=profile,
     )
-    final_lines = collect_screenshot_messages(debug_data["raw_lines"])
+    final_lines = collect_screenshot_messages(
+        debug_data["raw_lines"],
+        line_ys_by_channel=debug_data.get("raw_line_ys"),
+        raw_continuation_y_gaps=debug_data.get("raw_continuation_y_gaps"),
+    )
     report = {
         "source_image": str(image_path.resolve()),
         "effective_config": debug_data["config"],

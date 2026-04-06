@@ -25,7 +25,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-22 | `_effective_scale_factor` computed twice per resize | smell | 🔴 `open` | — |
 | T-25 | Inline error-case dict in `run_benchmark` duplicates `_unavailable_case` | smell | 🔴 `open` | — |
 | T-27 | Add hero-ban vote warning to `SYSTEM_PATTERNS` | smell | 🔴 `open` | — |
-| T-28 | Prevent continuation across large vertical gap | structural | 🔴 `open` | — |
+| T-28 | Prevent continuation across large vertical gap | structural | 🔵 `review` | — |
 | T-29 | Filter sub-height OCR bounding boxes | bug | 🟢 `done` | 2026-04-06 |
 | T-30 | Improve team-chat color masking for blue-on-blue scenarios | structural | 🔴 `open` | — |
 | T-01 | Y-anchor drift in `reconstruct_lines` | bug | 🟢 `done` | 2026-04-03 |
@@ -236,7 +236,7 @@ The in-game hero-ban vote notification `Warning! You're voting to ban your teamm
 
 ### T-28 · Prevent continuation across large vertical gap
 - **Severity:** structural
-- **State:** 🔴 `open`
+- **State:** 🔵 `review`
 - **File:** `src/ow_chat_logger/pipeline.py` / `src/ow_chat_logger/message_processing.py`
 - **Completed:** —
 
