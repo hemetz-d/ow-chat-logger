@@ -24,8 +24,8 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-21 | `SYSTEM_PATTERNS` redundant `.*` prefixes | smell | 🔴 `open` | — |
 | T-22 | `_effective_scale_factor` computed twice per resize | smell | 🔴 `open` | — |
 | T-25 | Inline error-case dict in `run_benchmark` duplicates `_unavailable_case` | smell | 🔴 `open` | — |
-| T-27 | Add hero-ban vote warning to `SYSTEM_PATTERNS` | smell | 🔵 `review` | — |
-| T-28 | Prevent continuation across large vertical gap | structural | 🔴 `open` | — |
+| T-27 | Add hero-ban vote warning to `SYSTEM_PATTERNS` | smell | 🟢 `done` | 2026-04-06 |
+| T-28 | Prevent continuation across large vertical gap | structural | 🟢 `done` | 2026-04-06 |
 | T-29 | Filter sub-height OCR bounding boxes | bug | 🟢 `done` | 2026-04-06 |
 | T-30 | Improve team-chat color masking for blue-on-blue scenarios | structural | 🔴 `open` | — |
 | T-01 | Y-anchor drift in `reconstruct_lines` | bug | 🟢 `done` | 2026-04-03 |
@@ -220,34 +220,6 @@ This causes two separate problems:
 
 ---
 
-### T-27 · Add hero-ban vote warning to `SYSTEM_PATTERNS`
-- **Severity:** smell
-- **State:** 🔵 `review`
-- **File:** `src/ow_chat_logger/parser.py:34-47`
-- **Completed:** —
-
-The in-game hero-ban vote notification `Warning! You're voting to ban your teammate's preferred hero.` is not listed in `SYSTEM_PATTERNS`. When OCR picks it up (e.g. when the notification renders over the chat region) it falls through to continuation and is appended to the last open player message instead of being dropped.
-
-**Fix direction:** Add `r"Warning! You're voting to ban your teammate's preferred hero"` to `SYSTEM_PATTERNS`. Remove the redundant `.*` prefix per T-21.
-
-**Test surface:** `tests/test_parser.py` — add a case verifying that a line containing the warning string is classified as a system message and not returned as player content.
-
----
-
-### T-28 · Prevent continuation across large vertical gap
-- **Severity:** structural
-- **State:** 🔴 `open`
-- **File:** `src/ow_chat_logger/pipeline.py` / `src/ow_chat_logger/message_processing.py`
-- **Completed:** —
-
-The continuation buffer appends any unrecognised OCR fragment to the last open player record regardless of how far below (in Y coordinates) the fragment appears relative to the message it is continuing. In example_17, a system-notification line two visual rows below the `[A7X]: gg` message — with a team-chat line in between — is appended to the `gg` record. A maximum vertical distance threshold would prevent bleed from spatially distant lines.
-
-**Fix direction:** Track the Y coordinate of the last line fed to the buffer. When a new fragment arrives as a continuation candidate, check the vertical distance from the previous line's Y. If the gap exceeds a configurable threshold (e.g. 2 × average line height, or a fixed pixel value relative to the crop height), discard the fragment rather than appending it. The threshold should be configurable in the OCR profile.
-
-**Test surface:** `tests/test_message_processing.py` — add a case where a continuation fragment arrives with a Y coordinate far below the open record and verify it is discarded.
-
----
-
 ### T-30 · Improve team-chat color masking for blue-on-blue scenarios
 - **Severity:** structural
 - **State:** 🔴 `open`
@@ -277,6 +249,26 @@ The `except Exception` branch in `run_benchmark` builds a 30-line inline dict th
 ---
 
 ## Completed and Deferred
+
+### T-27 · Add hero-ban vote warning to `SYSTEM_PATTERNS`
+- **Severity:** smell
+- **State:** 🟢 `done`
+- **File:** `src/ow_chat_logger/parser.py:34-47`
+- **Completed:** 2026-04-06
+
+Added `r"Warning! You're voting to ban your teammate's preferred hero"` to `SYSTEM_PATTERNS` so the in-game hero-ban notification is classified as a system message and discarded rather than appended to the last open player record.
+
+---
+
+### T-28 · Prevent continuation across large vertical gap
+- **Severity:** structural
+- **State:** 🟢 `done`
+- **File:** `src/ow_chat_logger/pipeline.py`, `src/ow_chat_logger/buffer.py`, `src/ow_chat_logger/message_processing.py`
+- **Completed:** 2026-04-06
+
+Tracks the Y coordinate of each reconstructed OCR line. `MessageBuffer.feed` gains a `max_y_gap` param; continuation fragments with `y - last_y > max_y_gap` are discarded. The threshold is `max_continuation_y_gap_factor × median_line_h` (scale-agnostic, same approach as `min_box_height_fraction`), defaulting to **2.0** in all profiles. At scale_factor=4 this yields ~146 px, blocking the example_17 bleed (gap=207 px) while allowing normal continuations.
+
+---
 
 ### T-29 · Filter sub-height OCR bounding boxes
 - **Severity:** bug

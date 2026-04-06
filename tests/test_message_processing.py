@@ -175,6 +175,30 @@ def test_collect_screenshot_messages_fixes_trailing_capital_I_in_player_prefix()
     }
 
 
+def test_continuation_discarded_when_y_gap_exceeds_threshold():
+    buffer = MessageBuffer()
+    buffer.feed("[Alice] : hello", y=10.0)
+    buffer.feed("extra text", y=90.0, max_y_gap=50.0)  # gap = 80 > 50 → discarded
+    result = buffer.flush()
+    assert result["msg"] == "hello"
+
+
+def test_continuation_appended_when_y_gap_within_threshold():
+    buffer = MessageBuffer()
+    buffer.feed("[Alice] : hello", y=10.0)
+    buffer.feed("extra text", y=50.0, max_y_gap=50.0)  # gap = 40 ≤ 50 → appended
+    result = buffer.flush()
+    assert result["msg"] == "hello extra text"
+
+
+def test_continuation_gap_ignored_when_threshold_is_none():
+    buffer = MessageBuffer()
+    buffer.feed("[Alice] : hello", y=10.0)
+    buffer.feed("extra text", y=9999.0, max_y_gap=None)  # huge gap but no threshold
+    result = buffer.flush()
+    assert result["msg"] == "hello extra text"
+
+
 def test_collect_screenshot_messages_strips_report_suffix_for_hero_lines_when_enabled():
     actual = collect_screenshot_messages(
         {

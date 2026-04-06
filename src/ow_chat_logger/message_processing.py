@@ -125,14 +125,19 @@ def process_lines(
     chat_logger,
     hero_logger,
     metrics=None,
+    line_ys_by_channel=None,
+    raw_continuation_y_gaps=None,
 ) -> None:
     """Process one screenshot's OCR lines as an isolated parsing session."""
     for chat_type in ("team", "all"):
         lines = lines_by_channel[chat_type]
         buffer = team_buffer if chat_type == "team" else all_buffer
+        ys = (line_ys_by_channel or {}).get(chat_type) or []
+        max_y_gap = (raw_continuation_y_gaps or {}).get(chat_type)
 
-        for line in lines:
-            finished = buffer.feed(line)
+        for i, line in enumerate(lines):
+            y = ys[i] if i < len(ys) else None
+            finished = buffer.feed(line, y, max_y_gap=max_y_gap)
             process_finished(
                 finished,
                 chat_type,
@@ -158,15 +163,20 @@ def collect_screenshot_messages(
     lines_by_channel,
     *,
     include_hero_lines: bool = False,
+    line_ys_by_channel=None,
+    raw_continuation_y_gaps=None,
 ) -> dict[str, list[str]]:
     """Return filtered, per-screenshot parsed messages for regression-style checks."""
     out = {"team_lines": [], "all_lines": []}
 
     for chat_type in ("team", "all"):
         buffer = MessageBuffer()
+        ys = (line_ys_by_channel or {}).get(chat_type) or []
+        max_y_gap = (raw_continuation_y_gaps or {}).get(chat_type)
 
-        for line in lines_by_channel[chat_type]:
-            finished = buffer.feed(line)
+        for i, line in enumerate(lines_by_channel[chat_type]):
+            y = ys[i] if i < len(ys) else None
+            finished = buffer.feed(line, y, max_y_gap=max_y_gap)
             record = normalize_finished_message(finished, chat_type)
             if record:
                 append_collected_record(

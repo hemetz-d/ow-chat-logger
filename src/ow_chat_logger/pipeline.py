@@ -11,7 +11,7 @@ from ow_chat_logger.config import CONFIG, resolve_ocr_profile
 from ow_chat_logger.image_processing import (
     clean_mask_steps,
     create_chat_masks,
-    reconstruct_lines,
+    reconstruct_lines_with_ys,
 )
 from ow_chat_logger.ocr import OCRBackend, ResolvedOCRProfile
 
@@ -123,9 +123,17 @@ def extract_chat_debug_data(
     ocr_seconds = time.perf_counter() - ocr_started
 
     parse_started = time.perf_counter()
-    out = {
-        key: reconstruct_lines(ocr_results[key], cfg)
+    reconstructed = {
+        key: reconstruct_lines_with_ys(ocr_results[key], cfg)
         for key in ("team", "all")
+    }
+    out = {key: [text for text, _ in pairs] for key, (pairs, _) in reconstructed.items()}
+    raw_line_ys = {key: [y for _, y in pairs] for key, (pairs, _) in reconstructed.items()}
+
+    gap_factor = cfg.get("max_continuation_y_gap_factor")
+    raw_continuation_y_gaps: dict[str, float | None] = {
+        key: gap_factor * median_h if gap_factor and median_h > 0.0 else None
+        for key, (_, median_h) in reconstructed.items()
     }
     parse_seconds = time.perf_counter() - parse_started
 
@@ -137,6 +145,8 @@ def extract_chat_debug_data(
         "ocr_results": ocr_results,
         "ocr_skipped": ocr_skipped,
         "raw_lines": out,
+        "raw_line_ys": raw_line_ys,
+        "raw_continuation_y_gaps": raw_continuation_y_gaps,
         "timings": {
             "preprocess_seconds": preprocess_seconds,
             "ocr_seconds": ocr_seconds,
