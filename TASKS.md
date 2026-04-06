@@ -24,7 +24,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-21 | `SYSTEM_PATTERNS` redundant `.*` prefixes | smell | 🔴 `open` | — |
 | T-22 | `_effective_scale_factor` computed twice per resize | smell | 🔴 `open` | — |
 | T-25 | Inline error-case dict in `run_benchmark` duplicates `_unavailable_case` | smell | 🔴 `open` | — |
-| T-27 | Add hero-ban vote warning to `SYSTEM_PATTERNS` | smell | 🔴 `open` | — |
+| T-27 | Add hero-ban vote warning to `SYSTEM_PATTERNS` | smell | 🔵 `review` | — |
 | T-28 | Prevent continuation across large vertical gap | structural | 🔴 `open` | — |
 | T-29 | Filter sub-height OCR bounding boxes | bug | 🟢 `done` | 2026-04-06 |
 | T-30 | Improve team-chat color masking for blue-on-blue scenarios | structural | 🔴 `open` | — |
@@ -222,7 +222,7 @@ This causes two separate problems:
 
 ### T-27 · Add hero-ban vote warning to `SYSTEM_PATTERNS`
 - **Severity:** smell
-- **State:** 🔴 `open`
+- **State:** 🔵 `review`
 - **File:** `src/ow_chat_logger/parser.py:34-47`
 - **Completed:** —
 
