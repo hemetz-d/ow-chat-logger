@@ -24,6 +24,10 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-21 | `SYSTEM_PATTERNS` redundant `.*` prefixes | smell | 🔴 `open` | — |
 | T-22 | `_effective_scale_factor` computed twice per resize | smell | 🔴 `open` | — |
 | T-25 | Inline error-case dict in `run_benchmark` duplicates `_unavailable_case` | smell | 🔴 `open` | — |
+| T-27 | Add hero-ban vote warning to `SYSTEM_PATTERNS` | smell | 🔴 `open` | — |
+| T-28 | Prevent continuation across large vertical gap | structural | 🔴 `open` | — |
+| T-29 | Filter sub-height OCR bounding boxes | bug | 🔴 `open` | — |
+| T-30 | Improve team-chat color masking for blue-on-blue scenarios | structural | 🔴 `open` | — |
 | T-01 | Y-anchor drift in `reconstruct_lines` | bug | 🟢 `done` | 2026-04-03 |
 | T-02 | `HERO_PATTERN` too greedy | bug | 🟢 `done` | 2026-04-03 |
 | T-03 | `r"channels"` bare substring | bug | 🟢 `done` | 2026-04-03 |
@@ -213,6 +217,62 @@ This causes two separate problems:
 **Recommended fix direction:** Option D. Apply key normalization at the `chat_dedup` / `hero_dedup` call sites in `message_processing.py`, and extend `_norm_line` in `test_regression_screenshots.py` to canonicalize the two pairs. No production output is changed; both failure modes are addressed.
 
 **Test surface:** `tests/test_regression_screenshots.py` (tolerance in comparison), `tests/test_deduplication.py` (verify that messages differing only in `,`/`.` or `=`/`-` are deduplicated as one).
+
+---
+
+### T-27 · Add hero-ban vote warning to `SYSTEM_PATTERNS`
+- **Severity:** smell
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/parser.py:34-47`
+- **Completed:** —
+
+The in-game hero-ban vote notification `Warning! You're voting to ban your teammate's preferred hero.` is not listed in `SYSTEM_PATTERNS`. When OCR picks it up (e.g. when the notification renders over the chat region) it falls through to continuation and is appended to the last open player message instead of being dropped.
+
+**Fix direction:** Add `r"Warning! You're voting to ban your teammate's preferred hero"` to `SYSTEM_PATTERNS`. Remove the redundant `.*` prefix per T-21.
+
+**Test surface:** `tests/test_parser.py` — add a case verifying that a line containing the warning string is classified as a system message and not returned as player content.
+
+---
+
+### T-28 · Prevent continuation across large vertical gap
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/pipeline.py` / `src/ow_chat_logger/message_processing.py`
+- **Completed:** —
+
+The continuation buffer appends any unrecognised OCR fragment to the last open player record regardless of how far below (in Y coordinates) the fragment appears relative to the message it is continuing. In example_17, a system-notification line two visual rows below the `[A7X]: gg` message — with a team-chat line in between — is appended to the `gg` record. A maximum vertical distance threshold would prevent bleed from spatially distant lines.
+
+**Fix direction:** Track the Y coordinate of the last line fed to the buffer. When a new fragment arrives as a continuation candidate, check the vertical distance from the previous line's Y. If the gap exceeds a configurable threshold (e.g. 2 × average line height, or a fixed pixel value relative to the crop height), discard the fragment rather than appending it. The threshold should be configurable in the OCR profile.
+
+**Test surface:** `tests/test_message_processing.py` — add a case where a continuation fragment arrives with a Y coordinate far below the open record and verify it is discarded.
+
+---
+
+### T-29 · Filter sub-height OCR bounding boxes
+- **Severity:** bug
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/image_processing.py` (`reconstruct_lines`)
+- **Completed:** —
+
+OCR sometimes returns bounding boxes for visually clipped or partial lines — lines occupying approximately half or less of the normal line height because they are cut off at the crop boundary. These produce garbled tokens (e.g. `enekleA` in example_02) that should be discarded before reaching the parser. No height filter currently exists.
+
+**Fix direction:** In `reconstruct_lines` (or as a post-OCR filter step), compute the median bounding-box height across all boxes in the result. Discard any box whose height is below a configurable fraction of the median (e.g. 0.5 × median). Make the threshold configurable in the OCR profile. Take care not to discard legitimately short glyphs in lines with mixed capitalisation — only full-line-height comparison makes sense here.
+
+**Test surface:** `tests/test_image_processing.py` — add a case with a synthetic box list containing one half-height box and verify it is filtered out.
+
+---
+
+### T-30 · Improve team-chat color masking for blue-on-blue scenarios
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/image_processing.py` (team mask logic)
+- **Completed:** —
+
+In several screenshots (example_09, example_12, example_14) the team-chat text color is a blue shade very similar to the background. The current HSV mask cannot distinguish text from background at this color/brightness combination, so lines are never isolated and OCR produces nothing. Example_14 also shows pink panel text (`Odin's Fav Child`) bleeding into the team-chat crop, suggesting the mask accepts too broad a hue range.
+
+**Fix direction:** Investigate the HSV ranges used for the team mask and compare against the failing screenshots. Consider: (a) widening the lightness range to catch slightly darker blue text; (b) adding a morphological close step before contour detection to bridge near-background-colored text; (c) adding a reject pass for out-of-range hues (e.g. pink/red) that are clearly not team-chat. This is a research-first task — inspect the debug mask images for example_09, example_12, and example_14 before changing thresholds.
+
+**Test surface:** `tests/test_regression_screenshots.py` — example_09, example_12, and example_14 are the direct regression targets.
 
 ---
 
