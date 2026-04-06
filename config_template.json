@@ -10,7 +10,7 @@
         "pipeline": {
           "scale_factor": 4,
           "high_quality_ocr": true,
-          "min_ocr_box_height": 30,
+          "min_box_height_fraction": 0.55,
           "min_component_area": 0,
           "y_merge_threshold": 14,
           "team_hsv_lower": [96, 190, 90],
@@ -27,7 +27,7 @@
         "pipeline": {
           "scale_factor": 3,
           "high_quality_ocr": false,
-          "min_ocr_box_height": 60,
+          "min_box_height_fraction": 0.55,
           "min_component_area": 0,
           "y_merge_threshold": 18,
           "team_hsv_lower": [84, 90, 90],
@@ -48,7 +48,7 @@
         "pipeline": {
           "scale_factor": 4,
           "high_quality_ocr": true,
-          "min_ocr_box_height": 30,
+          "min_box_height_fraction": 0.55,
           "min_component_area": 0,
           "y_merge_threshold": 16,
           "team_hsv_lower": [96, 190, 90],

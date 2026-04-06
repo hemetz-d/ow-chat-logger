@@ -6,13 +6,6 @@ These failures are **pre-existing** - they were present before the T-26 normaliz
 
 ---
 
-### example_02 - trailing OCR garbage appended to message content
-- **Channel:** all_lines
-- **Expected:** `[MrHenderson]: you guys suck baalls`
-- **Actual:** `[MrHenderson]: you guys suck baalls enekleA`
-- **Root cause:** The token `enekleA` comes from a visually cut-off line at the bottom of the chat region — the line occupies approximately half the normal line height because it is clipped by the crop boundary. A full-height line threshold (bounding-box height filter) would discard it before it ever reaches the parser. No such filter currently exists.
-- **Related task:** T-29
-
 ### example_04 - two distinct OCR errors on the same player name `Cipe`
 - **Channel:** team_lines
 - **Issues (two separate bugs):**
@@ -71,7 +64,7 @@ These failures are **pre-existing** - they were present before the T-26 normaliz
 ### example_17 - system notification bleed into player message
 - **Channel:** all_lines
 - **Expected:** `[A7X]: gg`
-- **Actual:** `[A7Xl•.]: gg Warning! You're voting to ban your teammate's preferred hero. -3.1`
+- **Actual:** `[A7Xl•.]: gg Warning! You're voting to ban your teammate's preferred hero.`
 - **Root cause (three parts):**
   1. **Player name artefacts:** `A7X` gains a garbled suffix (`l•.` or similar) — OCR reads stray pixels adjacent to the closing bracket as extra characters inside the player name token.
   2. **Vertical-distance bleed:** The warning text comes from approximately two lines below the `gg` message, with a team-chat line in between. The continuation buffer has no concept of vertical distance, so a distant line can still be appended to an open record. A max-vertical-gap constraint on continuation would prevent this class of bleed.
