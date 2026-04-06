@@ -47,6 +47,14 @@ SYSTEM_PATTERNS = [
     r".*to access voice.*",
 ]
 
+# Single-character OCR corrections: maps misread char → canonical char.
+# Add new pairs here as they are discovered from regression failures.
+_OCR_CHAR_MAP = str.maketrans({
+    ";": ":",   # semicolon misread as colon
+    ",": ".",   # comma / period
+    "=": "-",   # equals / minus
+})
+
 SYSTEM_MESSAGES = [
     "Chat and/or Voice enabled. Voice chat may be recorded to investigate and verify reports of disruptive behavior. Remember to act responsibly, protect your personal information, and report anything offensive.",
     "Voice chat may be recorded to investigate and verify reports of disruptive behavior.",
@@ -80,8 +88,8 @@ def normalize(text):
     # collapse whitespace
     text = re.sub(r"\s+", " ", text)
 
-    # common OCR punctuation fixes
-    text = text.replace(";", ":")
+    # single-character OCR corrections (see _OCR_CHAR_MAP)
+    text = text.translate(_OCR_CHAR_MAP)
 
     # Canonicalize standard chat prefix spacing once OCR has found "[player] : msg".
     text = re.sub(r"^\[([^\]]+)\]\s*:\s*", r"[\1]: ", text)
