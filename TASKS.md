@@ -26,7 +26,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-25 | Inline error-case dict in `run_benchmark` duplicates `_unavailable_case` | smell | 🔴 `open` | — |
 | T-27 | Add hero-ban vote warning to `SYSTEM_PATTERNS` | smell | 🔴 `open` | — |
 | T-28 | Prevent continuation across large vertical gap | structural | 🔴 `open` | — |
-| T-29 | Filter sub-height OCR bounding boxes | bug | 🔵 `review` | — |
+| T-29 | Filter sub-height OCR bounding boxes | bug | 🟢 `done` | 2026-04-06 |
 | T-30 | Improve team-chat color masking for blue-on-blue scenarios | structural | 🔴 `open` | — |
 | T-01 | Y-anchor drift in `reconstruct_lines` | bug | 🟢 `done` | 2026-04-03 |
 | T-02 | `HERO_PATTERN` too greedy | bug | 🟢 `done` | 2026-04-03 |
@@ -248,20 +248,6 @@ The continuation buffer appends any unrecognised OCR fragment to the last open p
 
 ---
 
-### T-29 · Filter sub-height OCR bounding boxes
-- **Severity:** bug
-- **State:** 🔵 `review`
-- **File:** `src/ow_chat_logger/image_processing.py` (`reconstruct_lines`)
-- **Completed:** —
-
-OCR sometimes returns bounding boxes for visually clipped or partial lines — lines occupying approximately half or less of the normal line height because they are cut off at the crop boundary. These produce garbled tokens (e.g. `enekleA` in example_02) that should be discarded before reaching the parser. No height filter currently exists.
-
-**Fix direction:** In `reconstruct_lines` (or as a post-OCR filter step), compute the median bounding-box height across all boxes in the result. Discard any box whose height is below a configurable fraction of the median (e.g. 0.5 × median). Make the threshold configurable in the OCR profile. Take care not to discard legitimately short glyphs in lines with mixed capitalisation — only full-line-height comparison makes sense here.
-
-**Test surface:** `tests/test_image_processing.py` — add a case with a synthetic box list containing one half-height box and verify it is filtered out.
-
----
-
 ### T-30 · Improve team-chat color masking for blue-on-blue scenarios
 - **Severity:** structural
 - **State:** 🔴 `open`
@@ -291,6 +277,16 @@ The `except Exception` branch in `run_benchmark` builds a 30-line inline dict th
 ---
 
 ## Completed and Deferred
+
+### T-29 · Filter sub-height OCR bounding boxes
+- **Severity:** bug
+- **State:** 🟢 `done`
+- **File:** `src/ow_chat_logger/image_processing.py` (`reconstruct_lines`)
+- **Completed:** 2026-04-06
+
+Replaced the scale-dependent absolute `min_ocr_box_height` threshold with a single relative `min_box_height_fraction` (0.55): any reconstructed line whose tallest bounding box is below 55% of the median line height in the same OCR result is discarded. This fixed the `enekleA` garbage token appended to example_02 (clipped line at h=36 vs median 68; 36/68=53% < 55%).
+
+---
 
 ### T-01 · Y-anchor drift in `reconstruct_lines`
 - **Severity:** bug
