@@ -1,5 +1,7 @@
 # Tasks
 
+Internal backlog and cleanup notes.
+
 Derived from the senior design review (2026-04-03), updated 2026-04-05 after focused codebase review.
 Each task has a severity, location, description, and tracked state.
 

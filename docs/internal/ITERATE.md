@@ -1,5 +1,7 @@
 # Iteration Process
 
+Internal working process for backlog iterations.
+
 > **Before anything else pull the latest changes: `git pull --rebase origin master`**
 > Do not read the task list, do not select a task, until this has run.
 > If conflicts happen, stop and notify about it.

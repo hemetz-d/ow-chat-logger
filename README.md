@@ -1,207 +1,186 @@
 # ow-chat-logger
 
-OCR-based Overwatch chat logger. Captures periodic screenshots, isolates chat text by color channel, runs OCR, and writes deduplicated messages to CSV.
+Windows-only OCR-based Overwatch chat logger.
 
-```
-Screenshot (pyautogui)
-        |
-        v
-  HSV Color Filter
-  +-----------+   +-----------+
-  | BLUE mask |   |ORANGE mask|
-  | (team)    |   | (all)     |
-  +-----------+   +-----------+
-        |               |
-        v               v
-  Upscale + morphological steps  (per-profile)
-        |               |
-        v               v
-  OCR Backend  (pluggable: Windows / EasyOCR / Tesseract)
-        |               |
-        v               v
-  Line reconstruct (Y-merge, height filter)
-        |               |
-        v               v
-  Parse + normalize (classify, fix OCR typos)
-        |               |
-        v               v
-  MessageBuffer (handle continuations per screenshot)
-        |               |
-        +-------+-------+
-                |
-                v
-       Dedup (LRU, 1000-entry window)
-                |
-                v
-     chat_log.csv / hero_log.csv
+It captures the chat area, isolates team and all-chat by color, runs OCR, reconstructs lines, and writes deduplicated messages to CSV. The default and best-supported backend is Windows OCR.
+
+## Quick Start
+
+### 1. Install
+
+```bash
+pip install -e .
 ```
 
----
+Optional OCR backends:
 
-## Modes
+```bash
+pip install -e ".[easyocr]"
+pip install -e ".[tesseract]"
+```
 
-### Live logger (default)
+### 2. Create a config file
 
-Runs two threads: one captures screenshots at a configurable interval, the other processes frames through the OCR pipeline.
+User config lives at:
+
+- `%APPDATA%\ow-chat-logger\config.json`
+
+You usually only need to set the chat capture region:
+
+```json
+{
+  "screen_region": [80, 400, 400, 600]
+}
+```
+
+Use [config_template.json](config_template.json) as the full reference.
+
+### 3. Run the live logger
 
 ```bash
 python -m ow_chat_logger
+```
+
+To use a different OCR profile:
+
+```bash
 python -m ow_chat_logger --ocr-profile easyocr_master_baseline
 ```
 
-With performance metrics written to CSV:
+## What You Get
+
+By default the app writes files under `%APPDATA%\ow-chat-logger\`:
+
+- `chat_log.csv`
+- `hero_log.csv`
+- `crash.log`
+- `performance_metrics_*.csv` when metrics are enabled
+- `analysis\...` folders from `analyze`
+
+## Supported Workflows
+
+### Live Logging
+
+This is the normal mode.
+
+```bash
+python -m ow_chat_logger
+```
+
+Optional metrics:
 
 ```bash
 python -m ow_chat_logger --metrics
 python -m ow_chat_logger --metrics --metrics-interval 5 --metrics-log-path perf.csv
 ```
 
-Output files (default: `%APPDATA%\ow-chat-logger\`):
+### Analyze A Screenshot
 
-```
-chat_log.csv              timestamp | player | message | channel
-hero_log.csv              timestamp | player | hero     | channel
-crash.log                 exception tracebacks
-performance_metrics.csv   timing, frame counts, duty cycle  (if --metrics)
-```
-
-### Analyze mode
-
-Runs the pipeline against a saved screenshot without capturing anything. Useful for tuning HSV ranges and OCR thresholds offline. Produces intermediate mask images for each processing step.
+Use this when tuning `screen_region`, HSV ranges, or OCR behavior on a saved image.
 
 ```bash
 python -m ow_chat_logger analyze --image path/to/screenshot.png
-python -m ow_chat_logger analyze --image screenshot.png --ocr-profile easyocr_master_baseline --output-dir ./debug --config overrides.json
+python -m ow_chat_logger analyze --image screenshot.png --output-dir .\\debug
+python -m ow_chat_logger analyze --image screenshot.png --ocr-profile easyocr_master_baseline
 ```
 
-Output:
+`analyze` writes:
 
-```
-<output-dir>/
-  original.png                  cropped capture region
-  team_01_raw_threshold.png     raw HSV mask
-  team_02_upscaled.png          after upscaling
-  team_03_after_close.png       after morphological close  (high_quality_ocr only)
-  team_04_after_open.png        after morphological open   (high_quality_ocr only)
-  all_*.png                     same steps for all-chat channel
-  report.json                   effective config, raw OCR lines, parsed messages
-```
+- the cropped source image
+- per-channel masks
+- intermediate mask-processing steps
+- `report.json` with raw OCR lines, parsed lines, timings, and effective config
 
-### Benchmark mode
+### Benchmark OCR Profiles
 
-Runs all configured OCR profiles against regression fixtures and ranks them by accuracy and speed.
+Use this to compare built-in OCR profiles against the regression fixtures.
 
 ```bash
 python -m ow_chat_logger benchmark
 python -m ow_chat_logger benchmark --profiles windows_default easyocr_master_baseline
-python -m ow_chat_logger benchmark --fixtures tests/fixtures/regression --json-out results.json --csv-out results.csv
+python -m ow_chat_logger benchmark --json-out results.json --csv-out results.csv
 ```
-
-Outputs a ranked summary to stdout:
-
-```
-OCR benchmark summary:
-  windows_default (windows):            7/7 exact matches, p50 total 42.10 ms
-  easyocr_master_baseline (easyocr):    6/7 exact matches, p50 total 380.22 ms
-  tesseract_default (tesseract):        unavailable
-```
-
----
 
 ## OCR Profiles
 
-Three built-in profiles are available. The active profile controls the OCR engine, image preprocessing steps, and HSV color ranges.
+Built-in profiles:
 
-| Profile | Engine | Notes |
-|---------|--------|-------|
-| `windows_default` | Windows OCR (WinRT) | Default. Fast, no extra install needed on Windows. |
-| `easyocr_master_baseline` | EasyOCR | Requires `pip install ow-chat-logger[easyocr]`. GPU optional. |
-| `tesseract_default` | Tesseract | Requires Tesseract installed and on PATH. |
+- `windows_default`
+  Windows OCR via WinRT. Default, fastest, and the primary supported path.
+- `easyocr_master_baseline`
+  Optional fallback for comparison and tuning.
+- `tesseract_default`
+  Optional fallback if Tesseract is installed and on `PATH`.
 
-Select a profile at runtime with `--ocr-profile <name>` in any mode. To change the default permanently, set `ocr.default_profile` in your user config.
+To change the default permanently, set `ocr.default_profile` in your config.
 
----
+## Config Notes
 
-## Configuration
+Most users only need:
 
-User config is loaded from `%APPDATA%\ow-chat-logger\config.json` (Windows) or `~/.ow-chat-logger/config.json`. Missing keys fall back to defaults. Override the path with `OW_CHAT_LOGGER_CONFIG`.
+- `screen_region`
+- `capture_interval`
+- `ocr.default_profile`
 
-`config_template.json` documents all available keys and the full profile structure.
+If you are tuning OCR behavior, the per-profile pipeline settings live under:
 
-Key pipeline parameters (per profile under `ocr.profiles.<name>.pipeline`):
+- `ocr.profiles.<name>.pipeline`
 
-| Key | Effect |
-|-----|--------|
-| `screen_region` | Capture region `[x, y, w, h]` in pixels |
-| `scale_factor` | Upscale factor before OCR |
-| `high_quality_ocr` | Enables extra morphological steps and component filtering |
-| `y_merge_threshold` | Max Y distance (px) to merge OCR boxes into one line |
-| `max_continuation_y_gap_factor` | Reject continuation joins when the next line is too far below the previous one |
-| `missing_prefix_min_anchor_lines` | Minimum number of valid prefixed chat lines needed before missing-prefix recovery is attempted |
-| `missing_prefix_body_start_tolerance` | Extra tolerance added around the learned body-start range for variable player-name widths |
-| `missing_prefix_min_span_nonzero_pixels` | Minimum mask pixels required inside the learned prefix span before a bare line is treated as a new `[unknown]` speaker |
-| `missing_prefix_min_span_density` | Minimum fill density required in the learned prefix span |
-| `missing_prefix_max_span_density` | Upper density guard to reject large filled blobs and background bleed |
-| `missing_prefix_max_largest_component_fraction` | Reject spans dominated by a single connected component rather than text-like structure |
-| `min_ocr_box_height` | Filter boxes shorter than this (noise rejection) |
-| `team_hsv_lower/upper` | HSV bounds for team chat color (blue) |
-| `all_hsv_lower/upper` | HSV bounds for all-chat color (orange) |
+Useful keys there include:
 
-Top-level settings:
+- `scale_factor`
+- `y_merge_threshold`
+- `max_continuation_y_gap_factor`
+- `min_box_height_fraction`
+- `team_hsv_lower` / `team_hsv_upper`
+- `all_hsv_lower` / `all_hsv_upper`
 
-| Key | Default | Effect |
-|-----|---------|--------|
-| `capture_interval` | `2.0` | Seconds between screenshots |
-| `max_remembered` | `1000` | Deduplication window size |
-| `ocr.default_profile` | `windows_default` | Active profile when no `--ocr-profile` flag is given |
+Environment overrides:
 
----
-
-## Installation
-
-```bash
-pip install -e ".[dev]"
-```
-
-With EasyOCR support:
-
-```bash
-pip install -e ".[dev,easyocr]"
-```
-
-Core dependencies: `opencv-python`, `pyautogui`, `numpy`, `pillow`, `psutil`
-Windows OCR requires: `winrt-runtime` (included in `requirements.txt`)
-
----
+- `OW_CHAT_LOGGER_CONFIG`
+  Use a custom config file path.
+- `OW_CHAT_LOG_DIR`
+  Override the output directory.
 
 ## Tests
+
+Fast test suite:
 
 ```bash
 pytest
 ```
 
-Unit tests cover parser, buffer, dedup, pipeline, image processing, logger, metrics, config, CLI, analysis, and benchmark.
-
-OCR regression tests (slow, require an active OCR backend):
+OCR screenshot regression suite:
 
 ```bash
 pytest --run-ocr tests/test_regression_screenshots.py
 ```
 
-To run OCR regression against a non-default backend profile:
+Run the regression suite against a specific backend profile:
 
 ```bash
 pytest --run-ocr --ocr-profile easyocr_master_baseline tests/test_regression_screenshots.py
 ```
 
-Add regression fixtures as `tests/fixtures/regression/<name>.png` + `<name>.expected.json`. See the fixture README for the JSON format and per-fixture config overrides.
+Fixture format is documented in [tests/fixtures/regression/README.md](tests/fixtures/regression/README.md).
 
----
-
-## Standalone EXE (Windows)
+## Standalone Windows Build
 
 ```powershell
 .\build_exe.ps1
 ```
 
-Uses Nuitka. Entry point: `packaging/nuitka_entry.py`.
+This builds a standalone folder app with Nuitka using [packaging/nuitka_entry.py](packaging/nuitka_entry.py).
+
+## Repo Layout
+
+Root files are intentionally kept small and user-facing:
+
+- `README.md`
+- `pyproject.toml`
+- `config_template.json`
+- `build_exe.ps1`
+- `src/`
+- `tests/`
+
+Internal project-management notes live under [docs/internal/README.md](docs/internal/README.md).
