@@ -228,12 +228,17 @@ def test_build_live_startup_banner_includes_user_paths():
 
     banner = build_live_startup_banner(profile=FakeProfile(), paths=FakePaths())
 
+    assert "\033[" in banner
     assert "ChatOCR running with profile 'windows_default' (windows)." in banner
-    assert "Output folder: C:\\Apps\\OW Chat Logger Data" in banner
-    assert "Chat log:      C:\\Apps\\OW Chat Logger Data\\chat_log.csv" in banner
-    assert "Hero log:      C:\\Apps\\OW Chat Logger Data\\hero_log.csv" in banner
-    assert "Config file:   C:\\Users\\test\\AppData\\Roaming\\ow-chat-logger\\config.json" in banner
-    assert "Crash log:     C:\\Users\\test\\AppData\\Roaming\\ow-chat-logger\\crash.log" in banner
+    assert "Chat log:    C:\\Apps\\OW Chat Logger Data\\chat_log.csv" in banner
+    assert "Hero log:    C:\\Apps\\OW Chat Logger Data\\hero_log.csv" in banner
+    assert "Config file: C:\\Users\\test\\AppData\\Roaming\\ow-chat-logger\\config.json" in banner
+    assert "Crash log:   C:\\Users\\test\\AppData\\Roaming\\ow-chat-logger\\crash.log" in banner
+    assert "Live tracking active." in banner
+    assert "Ctrl+C to stop." in banner
+    assert "\n\n\033[" in banner
+    assert "Output folder:" not in banner
+    assert "Paths:" not in banner
 
 
 def test_should_run_ocr_uses_nonzero_threshold():

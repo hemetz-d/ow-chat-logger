@@ -14,7 +14,7 @@ import pyautogui
 from ow_chat_logger.buffer import MessageBuffer
 from ow_chat_logger.config import CONFIG, get_app_paths, resolve_ocr_profile
 from ow_chat_logger.deduplication import DuplicateFilter
-from ow_chat_logger.logger import MessageLogger
+from ow_chat_logger.logger import MessageLogger, colorize_console_text
 from ow_chat_logger.message_processing import (
     collect_normalized_records,
     flush_buffers,
@@ -23,6 +23,12 @@ from ow_chat_logger.message_processing import (
 from ow_chat_logger.metrics import PerformanceMetrics
 from ow_chat_logger.ocr import OCRBackend, ResolvedOCRProfile, build_ocr_backend
 from ow_chat_logger.pipeline import extract_chat_debug_data
+
+BANNER_HEADER_COLOR = "\033[38;5;81m"
+BANNER_PATHS_COLOR = "\033[38;5;110m"
+BANNER_SECONDARY_COLOR = "\033[38;5;245m"
+BANNER_READY_COLOR = "\033[38;5;121m"
+BANNER_STOP_COLOR = "\033[38;5;229m"
 
 
 class LatestFrameQueue:
@@ -317,13 +323,19 @@ def close_loggers(*loggers) -> None:
 
 def build_live_startup_banner(*, profile: ResolvedOCRProfile, paths) -> str:
     lines = [
-        f"ChatOCR running with profile '{profile.name}' ({profile.engine_id}). Ctrl+C to stop.",
-        "Paths:",
-        f"  Output folder: {paths.log_dir}",
-        f"  Chat log:      {paths.chat_log}",
-        f"  Hero log:      {paths.hero_log}",
-        f"  Config file:   {paths.config_path}",
-        f"  Crash log:     {paths.crash_log}",
+        colorize_console_text(
+            f"ChatOCR running with profile '{profile.name}' ({profile.engine_id}).",
+            BANNER_HEADER_COLOR,
+        ),
+        "",
+        colorize_console_text(f"Chat log:    {paths.chat_log}", BANNER_PATHS_COLOR),
+        colorize_console_text(f"Hero log:    {paths.hero_log}", BANNER_PATHS_COLOR),
+        colorize_console_text(f"Config file: {paths.config_path}", BANNER_SECONDARY_COLOR),
+        colorize_console_text(f"Crash log:   {paths.crash_log}", BANNER_SECONDARY_COLOR),
+        "",
+        colorize_console_text("Live tracking active.", BANNER_READY_COLOR),
+        colorize_console_text("Ctrl+C to stop.", BANNER_STOP_COLOR),
+        "",
     ]
     return "\n".join(lines)
 
@@ -342,7 +354,7 @@ def run_live_logger(
     hero_dedup = DuplicateFilter(CONFIG["max_remembered"])
 
     paths = get_app_paths()
-    hero_logger = MessageLogger(str(paths.hero_log))
+    hero_logger = MessageLogger(str(paths.hero_log), print_messages=True, print_mode="hero")
     chat_logger = MessageLogger(str(paths.chat_log), print_messages=True)
 
     team_buffer = MessageBuffer()
