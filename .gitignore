@@ -4,6 +4,7 @@ build/
 *.spec
 *.egg-info/
 Output/
+OW Chat Logger Data/
 
 # Virtual environments
 .venv/

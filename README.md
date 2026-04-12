@@ -49,13 +49,25 @@ python -m ow_chat_logger --ocr-profile easyocr_master_baseline
 
 ## What You Get
 
-By default the app writes files under `%APPDATA%\ow-chat-logger\`:
+Output files always default to a visible sibling folder:
+
+- `OW Chat Logger Data\`
+
+For packaged runs, it is created next to the exe.
+
+For `python -m ow_chat_logger`, it is created under the directory you launch the command from.
+
+That folder contains:
 
 - `chat_log.csv`
 - `hero_log.csv`
-- `crash.log`
 - `performance_metrics_*.csv` when metrics are enabled
 - `analysis\...` folders from `analyze`
+
+Config and crash logging stay under `%APPDATA%\ow-chat-logger\`:
+
+- `config.json`
+- `crash.log`
 
 ## Supported Workflows
 
@@ -140,7 +152,7 @@ Environment overrides:
 - `OW_CHAT_LOGGER_CONFIG`
   Use a custom config file path.
 - `OW_CHAT_LOG_DIR`
-  Override the output directory.
+  Override the output directory. This is an environment override only, not a config-file setting.
 
 ## Tests
 

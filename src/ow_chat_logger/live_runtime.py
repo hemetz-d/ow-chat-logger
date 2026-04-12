@@ -315,6 +315,19 @@ def close_loggers(*loggers) -> None:
         logger.close()
 
 
+def build_live_startup_banner(*, profile: ResolvedOCRProfile, paths) -> str:
+    lines = [
+        f"ChatOCR running with profile '{profile.name}' ({profile.engine_id}). Ctrl+C to stop.",
+        "Paths:",
+        f"  Output folder: {paths.log_dir}",
+        f"  Chat log:      {paths.chat_log}",
+        f"  Hero log:      {paths.hero_log}",
+        f"  Config file:   {paths.config_path}",
+        f"  Crash log:     {paths.crash_log}",
+    ]
+    return "\n".join(lines)
+
+
 def run_live_logger(
     *,
     metrics_enabled_override: bool | None = None,
@@ -369,7 +382,7 @@ def run_live_logger(
         daemon=True,
     )
 
-    print(f"ChatOCR running with profile '{profile.name}' ({profile.engine_id}). Ctrl+C to stop.")
+    print(build_live_startup_banner(profile=profile, paths=paths))
 
     try:
         try:

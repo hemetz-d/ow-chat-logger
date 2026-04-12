@@ -74,6 +74,7 @@ ENGINE_SETTING_KEYS = {
 DEFAULT_OCR_PROFILE = "windows_default"
 EASYOCR_MASTER_BASELINE_PROFILE = "easyocr_master_baseline"
 TESSERACT_DEFAULT_PROFILE = "tesseract_default"
+PACKAGED_OUTPUT_DIR_NAME = "OW Chat Logger Data"
 
 
 def _builtin_ocr_profiles() -> dict[str, dict[str, Any]]:
@@ -213,7 +214,6 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     "team_hsv_upper": [118, 255, 255],
     "all_hsv_lower": [0, 150, 100],
     "all_hsv_upper": [20, 255, 255],
-    "log_dir": str(Path(os.getenv("APPDATA", Path.home() / ".ow-chat-logger")) / "ow-chat-logger"),
     "capture_interval": 2.0,
     "metrics_enabled": False,
     "metrics_interval_seconds": 10.0,
@@ -237,6 +237,8 @@ _cached_paths: "AppPaths | None" = None
 @dataclass(frozen=True)
 class AppPaths:
     log_dir: Path
+    appdata_dir: Path
+    config_path: Path
     chat_log: Path
     hero_log: Path
     crash_log: Path
@@ -260,16 +262,32 @@ class LazyConfig(Mapping[str, Any]):
         return repr(self._data())
 
 
-def _get_user_config_path() -> Path:
-    env_path = os.getenv("OW_CHAT_LOGGER_CONFIG")
-    if env_path:
-        return Path(env_path)
-
+def default_appdata_dir() -> Path:
     appdata = os.getenv("APPDATA")
     if appdata:
-        return Path(appdata) / "ow-chat-logger" / "config.json"
+        return Path(appdata) / "ow-chat-logger"
+    return Path.home() / ".ow-chat-logger"
 
-    return Path.home() / ".ow-chat-logger" / "config.json"
+
+def is_packaged_windows_run() -> bool:
+    return sys.platform == "win32" and bool(getattr(sys, "frozen", False))
+
+
+def default_runtime_base_dir() -> Path:
+    if is_packaged_windows_run():
+        return Path(sys.executable).resolve().parent
+    return Path.cwd().resolve()
+
+
+def default_runtime_log_dir() -> Path:
+    return default_runtime_base_dir() / PACKAGED_OUTPUT_DIR_NAME
+
+
+def get_user_config_path() -> Path:
+    env_path = os.getenv("OW_CHAT_LOGGER_CONFIG")
+    if env_path:
+        return Path(os.path.expandvars(env_path)).expanduser()
+    return default_appdata_dir() / "config.json"
 
 
 def resolve_log_dir(path: str | Path) -> Path:
@@ -278,7 +296,7 @@ def resolve_log_dir(path: str | Path) -> Path:
 
 
 def _load_user_config() -> dict[str, Any]:
-    cfg_path = _get_user_config_path()
+    cfg_path = get_user_config_path()
     if not cfg_path.exists():
         return {}
 
@@ -363,7 +381,9 @@ def load_config(*, reload: bool = False) -> dict[str, Any]:
         return _cached_config
 
     user_data = _load_user_config()
-    config = {**_DEFAULT_CONFIG, **user_data}
+    user_data_without_log_dir = {key: value for key, value in user_data.items() if key != "log_dir"}
+    config = {**_DEFAULT_CONFIG, **user_data_without_log_dir}
+    config["log_dir"] = str(default_runtime_log_dir())
 
     if env_dir := os.getenv("OW_CHAT_LOG_DIR"):
         config["log_dir"] = env_dir
@@ -388,14 +408,18 @@ def get_app_paths(*, ensure_exists: bool = True) -> AppPaths:
 
     config = load_config()
     log_dir = resolve_log_dir(config["log_dir"])
+    appdata_dir = default_appdata_dir()
     paths = AppPaths(
         log_dir=log_dir,
+        appdata_dir=appdata_dir,
+        config_path=get_user_config_path(),
         chat_log=log_dir / "chat_log.csv",
         hero_log=log_dir / "hero_log.csv",
-        crash_log=log_dir / "crash.log",
+        crash_log=appdata_dir / "crash.log",
         snap_dir=log_dir / "debug_snaps",
     )
     if ensure_exists:
+        paths.appdata_dir.mkdir(parents=True, exist_ok=True)
         paths.log_dir.mkdir(parents=True, exist_ok=True)
         paths.snap_dir.mkdir(parents=True, exist_ok=True)
     _cached_paths = paths

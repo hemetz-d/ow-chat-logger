@@ -10,6 +10,7 @@ from ow_chat_logger.config import CONFIG
 from ow_chat_logger.live_runtime import (
     LiveRecordConfirmationGate,
     LatestFrameQueue,
+    build_live_startup_banner,
     create_metrics_collector,
     default_metrics_log_name,
     extract_chat_lines_for_live,
@@ -211,6 +212,28 @@ def test_resolve_metrics_log_path_defaults_to_new_timestamped_file():
     assert path.parent == Path(CONFIG["log_dir"])
     assert path.name.startswith("performance_metrics_")
     assert path.suffix == ".csv"
+
+
+def test_build_live_startup_banner_includes_user_paths():
+    class FakeProfile:
+        name = "windows_default"
+        engine_id = "windows"
+
+    class FakePaths:
+        log_dir = Path("C:/Apps/OW Chat Logger Data")
+        chat_log = log_dir / "chat_log.csv"
+        hero_log = log_dir / "hero_log.csv"
+        config_path = Path("C:/Users/test/AppData/Roaming/ow-chat-logger/config.json")
+        crash_log = Path("C:/Users/test/AppData/Roaming/ow-chat-logger/crash.log")
+
+    banner = build_live_startup_banner(profile=FakeProfile(), paths=FakePaths())
+
+    assert "ChatOCR running with profile 'windows_default' (windows)." in banner
+    assert "Output folder: C:\\Apps\\OW Chat Logger Data" in banner
+    assert "Chat log:      C:\\Apps\\OW Chat Logger Data\\chat_log.csv" in banner
+    assert "Hero log:      C:\\Apps\\OW Chat Logger Data\\hero_log.csv" in banner
+    assert "Config file:   C:\\Users\\test\\AppData\\Roaming\\ow-chat-logger\\config.json" in banner
+    assert "Crash log:     C:\\Users\\test\\AppData\\Roaming\\ow-chat-logger\\crash.log" in banner
 
 
 def test_should_run_ocr_uses_nonzero_threshold():
