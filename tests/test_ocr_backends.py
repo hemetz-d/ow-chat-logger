@@ -17,14 +17,22 @@ def test_resolve_ocr_profile_uses_windows_default_profile():
     assert profile.name == "windows_default"
     assert profile.engine_id == "windows"
     assert profile.pipeline["scale_factor"] == 4
+    assert profile.pipeline["max_continuation_y_gap_factor"] == 2.0
 
 
 def test_merge_runtime_config_maps_legacy_flat_overrides_to_default_profile():
-    config = merge_runtime_config({"scale_factor": 7, "languages": ["de"]})
+    config = merge_runtime_config(
+        {
+            "scale_factor": 7,
+            "languages": ["de"],
+            "max_continuation_y_gap_factor": 3.5,
+        }
+    )
     profile = resolve_ocr_profile(config)
 
     assert profile.pipeline["scale_factor"] == 7
     assert profile.languages == ["de"]
+    assert profile.pipeline["max_continuation_y_gap_factor"] == 3.5
 
 
 def test_easyocr_backend_filters_by_confidence(monkeypatch):

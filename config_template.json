@@ -1,6 +1,7 @@
 {
   "log_dir": "%APPDATA%\\ow-chat-logger",
   "screen_region": [80, 400, 400, 600],
+  "live_message_confirmations_required": 2,
   "ocr": {
     "default_profile": "windows_default",
     "profiles": {

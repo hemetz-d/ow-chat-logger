@@ -55,6 +55,18 @@ def test_run_analyze_writes_report_and_masks(monkeypatch, local_tmp_dir):
                     ("02_upscaled", np.ones((4, 4), dtype=np.uint8)),
                 ],
             },
+            "ocr_results": {
+                "team": [([[0, 0], [1, 0], [1, 1], [0, 1]], "Alice", 1.0)],
+                "all": [([[2, 2], [3, 2], [3, 3], [2, 3]], "Bob", None)],
+            },
+            "ocr_skipped": {"team": False, "all": True},
+            "raw_line_ys": {"team": [10.0], "all": [20.0, 30.0]},
+            "raw_continuation_y_gaps": {"team": 15.0, "all": None},
+            "timings": {
+                "preprocess_seconds": 0.001,
+                "ocr_seconds": 0.002,
+                "parse_seconds": 0.003,
+            },
             "raw_lines": {
                 "team": ["[Alice] : hi there"],
                 "all": ["Joined team voice chat - Push to talk", "[Bob] : hello"],
@@ -71,6 +83,32 @@ def test_run_analyze_writes_report_and_masks(monkeypatch, local_tmp_dir):
     assert report["final_lines"] == {
         "team_lines": ["[Alice]: hi there"],
         "all_lines": ["[Bob]: hello"],
+    }
+    assert report["timings_ms"] == {
+        "preprocess": 1.0,
+        "ocr": 2.0,
+        "parse": 3.0,
+        "total": 6.0,
+    }
+    assert report["ocr_skipped"] == {"team": False, "all": True}
+    assert report["mask_nonzero_pixels"] == {"team": 0, "all": 4}
+    assert report["raw_line_ys"] == {"team": [10.0], "all": [20.0, 30.0]}
+    assert report["raw_continuation_y_gaps"] == {"team": 15.0, "all": None}
+    assert report["ocr_results_serialized"] == {
+        "team": [
+            {
+                "text": "Alice",
+                "confidence": 1.0,
+                "bbox": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            }
+        ],
+        "all": [
+            {
+                "text": "Bob",
+                "confidence": None,
+                "bbox": [[2.0, 2.0], [3.0, 2.0], [3.0, 3.0], [2.0, 3.0]],
+            }
+        ],
     }
     assert Path(report["artifacts"]["original_image"]).is_file()
     assert Path(report["artifacts"]["team_mask"]).is_file()

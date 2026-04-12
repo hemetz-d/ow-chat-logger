@@ -75,6 +75,30 @@ def test_summarize_benchmark_results_ranks_by_pass_rate_then_latency():
     assert summary["profiles"]["easyocr_master_baseline"]["exact_pass_rate"] == 0.5
 
 
+def test_summarize_benchmark_results_keeps_percentiles_in_ms_units():
+    rows = [
+        {
+            "ocr_profile": "windows_default",
+            "ocr_engine": "windows",
+            "status": "ok",
+            "exact_match": True,
+            "timings": {"total_ms": 120.0},
+        },
+        {
+            "ocr_profile": "windows_default",
+            "ocr_engine": "windows",
+            "status": "ok",
+            "exact_match": True,
+            "timings": {"total_ms": 150.0},
+        },
+    ]
+
+    summary = summarize_benchmark_results(rows)
+
+    assert summary["profiles"]["windows_default"]["total_ms_p50"] == 120.0
+    assert summary["profiles"]["windows_default"]["total_ms_p95"] == 150.0
+
+
 def test_run_benchmark_writes_json_and_csv_reports(monkeypatch, local_tmp_dir):
     fixture_dir = local_tmp_dir("benchmark-fixtures")
     png_path = fixture_dir / "fixture.png"

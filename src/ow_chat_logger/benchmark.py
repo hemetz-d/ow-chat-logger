@@ -75,7 +75,7 @@ def _percentile_ms(samples: list[float], percentile: float) -> float | None:
         return None
     ordered = sorted(samples)
     index = max(0, min(len(ordered) - 1, math.ceil(percentile * len(ordered)) - 1))
-    return ordered[index] * 1000.0
+    return ordered[index]
 
 
 def _benchmark_case(

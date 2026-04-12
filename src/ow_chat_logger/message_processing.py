@@ -54,6 +54,36 @@ def normalize_finished_message(finished, chat_type):
     return None
 
 
+def log_normalized_record(
+    record,
+    *,
+    chat_dedup,
+    hero_dedup,
+    chat_logger,
+    hero_logger,
+    metrics=None,
+) -> None:
+    """Log one already-normalized record (standard chat or hero line)."""
+    if not record:
+        return
+
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    if record["category"] == "standard":
+        key = f"{record['player']}|{record['msg']}"
+        if chat_dedup.is_new(key):
+            chat_logger.log(timestamp, record["player"], record["msg"], record["chat_type"])
+            if metrics is not None:
+                metrics.record_logged_message("standard")
+
+    elif record["category"] == "hero":
+        hero_key = f"{record['player']}|{record['hero']}"
+        if hero_dedup.is_new(hero_key):
+            hero_logger.log(timestamp, record["player"], record["hero"], record["chat_type"])
+            if metrics is not None:
+                metrics.record_logged_message("hero")
+
+
 def process_finished(
     finished,
     chat_type,
@@ -65,25 +95,14 @@ def process_finished(
     metrics=None,
 ) -> None:
     """Log one completed buffer message (standard chat or hero line)."""
-    record = normalize_finished_message(finished, chat_type)
-    if not record:
-        return
-
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-
-    if record["category"] == "standard":
-        key = f"{record['player']}|{record['msg']}"
-        if chat_dedup.is_new(key):
-            chat_logger.log(timestamp, record["player"], record["msg"], chat_type)
-            if metrics is not None:
-                metrics.record_logged_message("standard")
-
-    elif record["category"] == "hero":
-        hero_key = f"{record['player']}|{record['hero']}"
-        if hero_dedup.is_new(hero_key):
-            hero_logger.log(timestamp, record["player"], record["hero"], chat_type)
-            if metrics is not None:
-                metrics.record_logged_message("hero")
+    log_normalized_record(
+        normalize_finished_message(finished, chat_type),
+        chat_dedup=chat_dedup,
+        hero_dedup=hero_dedup,
+        chat_logger=chat_logger,
+        hero_logger=hero_logger,
+        metrics=metrics,
+    )
 
 
 def flush_buffers(
@@ -117,6 +136,37 @@ def flush_buffers(
     )
 
 
+def collect_normalized_records(
+    lines_by_channel,
+    team_buffer,
+    all_buffer,
+    *,
+    line_ys_by_channel=None,
+    raw_continuation_y_gaps=None,
+) -> list[dict[str, Any]]:
+    """Return normalized records extracted from one screenshot."""
+    records: list[dict[str, Any]] = []
+
+    for chat_type in ("team", "all"):
+        lines = lines_by_channel[chat_type]
+        buffer = team_buffer if chat_type == "team" else all_buffer
+        ys = (line_ys_by_channel or {}).get(chat_type) or []
+        max_y_gap = (raw_continuation_y_gaps or {}).get(chat_type)
+
+        for i, line in enumerate(lines):
+            y = ys[i] if i < len(ys) else None
+            finished = buffer.feed(line, y, max_y_gap=max_y_gap)
+            record = normalize_finished_message(finished, chat_type)
+            if record:
+                records.append(record)
+
+        record = normalize_finished_message(buffer.flush(), chat_type)
+        if record:
+            records.append(record)
+
+    return records
+
+
 def process_lines(
     lines_by_channel,
     team_buffer,
@@ -131,34 +181,22 @@ def process_lines(
     raw_continuation_y_gaps=None,
 ) -> None:
     """Process one screenshot's OCR lines as an isolated parsing session."""
-    for chat_type in ("team", "all"):
-        lines = lines_by_channel[chat_type]
-        buffer = team_buffer if chat_type == "team" else all_buffer
-        ys = (line_ys_by_channel or {}).get(chat_type) or []
-        max_y_gap = (raw_continuation_y_gaps or {}).get(chat_type)
-
-        for i, line in enumerate(lines):
-            y = ys[i] if i < len(ys) else None
-            finished = buffer.feed(line, y, max_y_gap=max_y_gap)
-            process_finished(
-                finished,
-                chat_type,
-                chat_dedup=chat_dedup,
-                hero_dedup=hero_dedup,
-                chat_logger=chat_logger,
-                hero_logger=hero_logger,
-                metrics=metrics,
-            )
-
-    flush_buffers(
+    records = collect_normalized_records(
+        lines_by_channel,
         team_buffer,
         all_buffer,
-        chat_dedup=chat_dedup,
-        hero_dedup=hero_dedup,
-        chat_logger=chat_logger,
-        hero_logger=hero_logger,
-        metrics=metrics,
+        line_ys_by_channel=line_ys_by_channel,
+        raw_continuation_y_gaps=raw_continuation_y_gaps,
     )
+    for record in records:
+        log_normalized_record(
+            record,
+            chat_dedup=chat_dedup,
+            hero_dedup=hero_dedup,
+            chat_logger=chat_logger,
+            hero_logger=hero_logger,
+            metrics=metrics,
+        )
 
 
 def collect_screenshot_messages(
@@ -170,30 +208,19 @@ def collect_screenshot_messages(
 ) -> dict[str, list[str]]:
     """Return filtered, per-screenshot parsed messages for regression-style checks."""
     out = {"team_lines": [], "all_lines": []}
-
-    for chat_type in ("team", "all"):
-        buffer = MessageBuffer()
-        ys = (line_ys_by_channel or {}).get(chat_type) or []
-        max_y_gap = (raw_continuation_y_gaps or {}).get(chat_type)
-
-        for i, line in enumerate(lines_by_channel[chat_type]):
-            y = ys[i] if i < len(ys) else None
-            finished = buffer.feed(line, y, max_y_gap=max_y_gap)
-            record = normalize_finished_message(finished, chat_type)
-            if record:
-                append_collected_record(
-                    out,
-                    record,
-                    include_hero_lines=include_hero_lines,
-                )
-
-        record = normalize_finished_message(buffer.flush(), chat_type)
-        if record:
-            append_collected_record(
-                out,
-                record,
-                include_hero_lines=include_hero_lines,
-            )
+    records = collect_normalized_records(
+        lines_by_channel,
+        MessageBuffer(),
+        MessageBuffer(),
+        line_ys_by_channel=line_ys_by_channel,
+        raw_continuation_y_gaps=raw_continuation_y_gaps,
+    )
+    for record in records:
+        append_collected_record(
+            out,
+            record,
+            include_hero_lines=include_hero_lines,
+        )
 
     return out
 

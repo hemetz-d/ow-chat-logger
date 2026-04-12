@@ -24,6 +24,41 @@ DISPLAY_CONFIG_KEYS = (
 )
 
 
+def _timings_ms(debug_data: dict[str, Any]) -> dict[str, float]:
+    timings = debug_data.get("timings") or {}
+    preprocess = float(timings.get("preprocess_seconds", 0.0)) * 1000.0
+    ocr = float(timings.get("ocr_seconds", 0.0)) * 1000.0
+    parse = float(timings.get("parse_seconds", 0.0)) * 1000.0
+    return {
+        "preprocess": preprocess,
+        "ocr": ocr,
+        "parse": parse,
+        "total": preprocess + ocr + parse,
+    }
+
+
+def _mask_nonzero_pixels(debug_data: dict[str, Any]) -> dict[str, int]:
+    masks = debug_data.get("masks") or {}
+    return {
+        "team": int(np.count_nonzero(masks.get("team"))) if masks.get("team") is not None else 0,
+        "all": int(np.count_nonzero(masks.get("all"))) if masks.get("all") is not None else 0,
+    }
+
+
+def _serialize_ocr_results(debug_data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    serialized = {"team": [], "all": []}
+    for channel in ("team", "all"):
+        for bbox, text, confidence in list((debug_data.get("ocr_results") or {}).get(channel) or []):
+            serialized[channel].append(
+                {
+                    "text": str(text),
+                    "confidence": None if confidence is None else float(confidence),
+                    "bbox": [[float(x), float(y)] for x, y in bbox],
+                }
+            )
+    return serialized
+
+
 def load_json_file(path: Path) -> dict[str, Any]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
@@ -96,6 +131,25 @@ def print_analysis_summary(report: dict[str, Any], output_dir: Path) -> None:
         if key in report["effective_config"]:
             print(f"  {key}: {report['effective_config'][key]}")
 
+    timings = report.get("timings_ms") or {}
+    print(
+        "Timing (ms): "
+        f"preprocess={timings.get('preprocess', 0.0):.2f}, "
+        f"ocr={timings.get('ocr', 0.0):.2f}, "
+        f"parse={timings.get('parse', 0.0):.2f}, "
+        f"total={timings.get('total', 0.0):.2f}"
+    )
+    print(
+        "OCR status: "
+        f"team_skipped={bool((report.get('ocr_skipped') or {}).get('team', False))}, "
+        f"all_skipped={bool((report.get('ocr_skipped') or {}).get('all', False))}"
+    )
+    print(
+        "Mask pixels: "
+        f"team={int((report.get('mask_nonzero_pixels') or {}).get('team', 0))}, "
+        f"all={int((report.get('mask_nonzero_pixels') or {}).get('all', 0))}"
+    )
+
     print("Final team lines:")
     if report["final_lines"]["team_lines"]:
         for line in report["final_lines"]["team_lines"]:
@@ -142,7 +196,17 @@ def run_analyze(args) -> int:
             "engine": profile.engine_id,
             "languages": profile.languages,
         },
+        "timings_ms": _timings_ms(debug_data),
+        "ocr_skipped": {
+            "team": bool((debug_data.get("ocr_skipped") or {}).get("team", False)),
+            "all": bool((debug_data.get("ocr_skipped") or {}).get("all", False)),
+        },
+        "mask_nonzero_pixels": _mask_nonzero_pixels(debug_data),
+        "ocr_results_serialized": _serialize_ocr_results(debug_data),
         "raw_lines": debug_data["raw_lines"],
+        "raw_line_ys": debug_data.get("raw_line_ys") or {"team": [], "all": []},
+        "raw_continuation_y_gaps": debug_data.get("raw_continuation_y_gaps")
+        or {"team": None, "all": None},
         "final_lines": final_lines,
     }
     report["artifacts"] = write_analysis_artifacts(

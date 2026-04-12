@@ -8,6 +8,7 @@ import numpy as np
 from ow_chat_logger.buffer import MessageBuffer
 from ow_chat_logger.config import CONFIG
 from ow_chat_logger.live_runtime import (
+    LiveRecordConfirmationGate,
     LatestFrameQueue,
     create_metrics_collector,
     default_metrics_log_name,
@@ -31,6 +32,9 @@ def test_latest_frame_queue_drops_oldest_item():
 
 def test_processing_worker_drains_queue_after_stop(monkeypatch):
     processed = []
+    import ow_chat_logger.config as cfg_module
+    cfg_module.load_config()
+    monkeypatch.setitem(cfg_module._cached_config, "live_message_confirmations_required", 1)
 
     def fake_extract_chat_debug_data(screenshot, ocr, **kwargs):
         processed.append(screenshot)
@@ -73,6 +77,121 @@ def test_processing_worker_drains_queue_after_stop(monkeypatch):
     assert error_queue.empty()
     assert processed == ["frame-1", "frame-2"]
     assert chat_logger.log.call_count == 2
+
+
+def test_live_record_confirmation_gate_requires_two_consecutive_frames():
+    gate = LiveRecordConfirmationGate(2)
+    record = {
+        "category": "standard",
+        "chat_type": "team",
+        "player": "Alice",
+        "msg": "hello",
+        "hero": "",
+    }
+
+    assert gate.accept_frame([record]) == []
+    assert gate.accept_frame([record]) == [record]
+    assert gate.accept_frame([record]) == []
+
+
+def test_live_record_confirmation_gate_supports_hero_records():
+    gate = LiveRecordConfirmationGate(2)
+    record = {
+        "category": "hero",
+        "chat_type": "all",
+        "player": "Alice",
+        "msg": "group up",
+        "hero": "Mercy",
+    }
+
+    assert gate.accept_frame([record]) == []
+    assert gate.accept_frame([record]) == [record]
+
+
+def test_live_record_confirmation_gate_drops_pending_record_after_gap():
+    gate = LiveRecordConfirmationGate(2)
+    record = {
+        "category": "standard",
+        "chat_type": "team",
+        "player": "Alice",
+        "msg": "hello",
+        "hero": "",
+    }
+
+    assert gate.accept_frame([record]) == []
+    assert gate.accept_frame([]) == []
+    assert gate.accept_frame([record]) == []
+
+
+def test_live_record_confirmation_gate_threshold_one_preserves_immediate_logging():
+    gate = LiveRecordConfirmationGate(1)
+    record = {
+        "category": "standard",
+        "chat_type": "team",
+        "player": "Alice",
+        "msg": "hello",
+        "hero": "",
+    }
+
+    assert gate.accept_frame([record]) == [record]
+
+
+def test_live_record_confirmation_gate_clamps_threshold_below_one():
+    gate = LiveRecordConfirmationGate(0)
+    record = {
+        "category": "standard",
+        "chat_type": "team",
+        "player": "Alice",
+        "msg": "hello",
+        "hero": "",
+    }
+
+    assert gate.accept_frame([record]) == [record]
+
+
+def test_processing_worker_does_not_log_single_frame_artifact_with_confirmation(monkeypatch):
+    import ow_chat_logger.config as cfg_module
+
+    cfg_module.load_config()
+    monkeypatch.setitem(cfg_module._cached_config, "live_message_confirmations_required", 2)
+
+    def fake_extract_chat_debug_data(screenshot, ocr, **kwargs):
+        return {
+            "raw_lines": {"team": ["[Alice] : hi"], "all": []},
+            "raw_line_ys": {"team": [], "all": []},
+            "timings": {"preprocess_seconds": 0, "ocr_seconds": 0, "parse_seconds": 0},
+            "ocr_skipped": {"team": False, "all": False},
+            "ocr_results": {"team": [], "all": []},
+        }
+
+    monkeypatch.setattr(
+        "ow_chat_logger.live_runtime.extract_chat_debug_data",
+        fake_extract_chat_debug_data,
+    )
+
+    frame_queue = LatestFrameQueue(maxsize=2)
+    frame_queue.put_latest("frame-1")
+    stop_event = threading.Event()
+    stop_event.set()
+    error_queue = Queue()
+    chat_logger = MagicMock()
+
+    processing_worker(
+        frame_queue,
+        stop_event,
+        error_queue,
+        ocr=MagicMock(),
+        ocr_profile=None,
+        team_buffer=MessageBuffer(),
+        all_buffer=MessageBuffer(),
+        chat_dedup=MagicMock(is_new=MagicMock(return_value=True)),
+        hero_dedup=MagicMock(),
+        chat_logger=chat_logger,
+        hero_logger=MagicMock(),
+    )
+
+    assert error_queue.empty()
+    chat_logger.log.assert_not_called()
 
 
 def test_create_metrics_collector_disabled_by_default():

@@ -15,7 +15,11 @@ from ow_chat_logger.buffer import MessageBuffer
 from ow_chat_logger.config import CONFIG, get_app_paths, resolve_ocr_profile
 from ow_chat_logger.deduplication import DuplicateFilter
 from ow_chat_logger.logger import MessageLogger
-from ow_chat_logger.message_processing import flush_buffers, process_lines
+from ow_chat_logger.message_processing import (
+    collect_normalized_records,
+    flush_buffers,
+    log_normalized_record,
+)
 from ow_chat_logger.metrics import PerformanceMetrics
 from ow_chat_logger.ocr import OCRBackend, ResolvedOCRProfile, build_ocr_backend
 from ow_chat_logger.pipeline import extract_chat_debug_data
@@ -48,6 +52,58 @@ class LatestFrameQueue:
 
     def empty(self) -> bool:
         return self._queue.empty()
+
+
+class LiveRecordConfirmationGate:
+    """Require consistent records across consecutive processed frames before logging."""
+
+    def __init__(self, required_confirmations: int):
+        self.required_confirmations = max(int(required_confirmations), 1)
+        self._pending_counts: dict[tuple[Any, ...], int] = {}
+        self._committed_active: set[tuple[Any, ...]] = set()
+
+    @staticmethod
+    def _identity(record: dict[str, Any]) -> tuple[Any, ...]:
+        return (
+            record["category"],
+            record["chat_type"],
+            record["player"],
+            record.get("hero", ""),
+            record["msg"],
+        )
+
+    def accept_frame(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if self.required_confirmations <= 1:
+            return records
+
+        unique_records: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+        seen: set[tuple[Any, ...]] = set()
+        for record in records:
+            identity = self._identity(record)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            unique_records.append((identity, record))
+
+        emitted: list[dict[str, Any]] = []
+        next_pending: dict[tuple[Any, ...], int] = {}
+        next_committed: set[tuple[Any, ...]] = set()
+
+        for identity, record in unique_records:
+            if identity in self._committed_active:
+                next_committed.add(identity)
+                continue
+
+            count = self._pending_counts.get(identity, 0) + 1
+            if count >= self.required_confirmations:
+                emitted.append(record)
+                next_committed.add(identity)
+            else:
+                next_pending[identity] = count
+
+        self._pending_counts = next_pending
+        self._committed_active = next_committed
+        return emitted
 
 
 def capture():
@@ -194,6 +250,10 @@ def processing_worker(
     hero_logger,
     metrics=None,
 ) -> None:
+    confirmation_gate = LiveRecordConfirmationGate(
+        CONFIG.get("live_message_confirmations_required", 2)
+    )
+
     try:
         while not stop_event.is_set() or not frame_queue.empty():
             try:
@@ -226,18 +286,22 @@ def processing_worker(
                     ocr_profile_name=profile.name,
                     ocr_engine_id=profile.engine_id,
                 )
-            process_lines(
+            records = collect_normalized_records(
                 debug_data["raw_lines"],
                 team_buffer,
                 all_buffer,
-                chat_dedup=chat_dedup,
-                hero_dedup=hero_dedup,
-                chat_logger=chat_logger,
-                hero_logger=hero_logger,
-                metrics=metrics,
                 line_ys_by_channel=debug_data.get("raw_line_ys"),
                 raw_continuation_y_gaps=debug_data.get("raw_continuation_y_gaps"),
             )
+            for record in confirmation_gate.accept_frame(records):
+                log_normalized_record(
+                    record,
+                    chat_dedup=chat_dedup,
+                    hero_dedup=hero_dedup,
+                    chat_logger=chat_logger,
+                    hero_logger=hero_logger,
+                    metrics=metrics,
+                )
             if metrics is not None:
                 metrics.flush_if_due()
     except Exception as exc:
