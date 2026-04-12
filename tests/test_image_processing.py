@@ -2,7 +2,13 @@
 
 import numpy as np
 
-from ow_chat_logger.image_processing import clean_mask, reconstruct_lines, remove_small_components
+from ow_chat_logger.image_processing import (
+    clean_mask,
+    compute_prefix_evidence_for_lines,
+    reconstruct_line_data,
+    reconstruct_lines,
+    remove_small_components,
+)
 
 
 def _box(x0, y0, w, h):
@@ -120,6 +126,267 @@ def test_reconstruct_lines_short_char_stays_on_same_line():
     ]
     lines = reconstruct_lines(results, cfg)
     assert lines == ["fck u moira"]
+
+
+def test_reconstruct_line_data_exposes_geometry():
+    cfg = {"y_merge_threshold": 20}
+    results = [
+        (_box(40, 10, 30, 20), "hello", 0.9),
+        (_box(80, 12, 20, 18), "world", 0.9),
+    ]
+
+    lines, median_h = reconstruct_line_data(results, cfg)
+
+    assert median_h == 20.0
+    assert lines == [
+        {
+            "text": "hello world",
+            "center_y": 20.0,
+            "top_y": 10.0,
+            "bottom_y": 30.0,
+            "line_height": 20.0,
+            "first_box_x": 40.0,
+            "first_box_right_x": 70.0,
+            "segments": [
+                {"text": "hello", "x1": 40.0, "x2": 70.0, "y1": 10.0, "y2": 30.0},
+                {"text": "world", "x1": 80.0, "x2": 100.0, "y1": 12.0, "y2": 30.0},
+            ],
+        }
+    ]
+
+
+def test_compute_prefix_evidence_for_lines_positive_case():
+    mask = np.zeros((120, 160), dtype=np.uint8)
+    mask[30:70, 10:16] = 255
+    mask[30:70, 18:24] = 255
+    mask[30:70, 26:30] = 255
+
+    layout, evidence = compute_prefix_evidence_for_lines(
+        mask,
+        [
+            {
+                "text": "[A]: hi",
+                "center_y": 20.0,
+                "top_y": 4.0,
+                "bottom_y": 36.0,
+                "line_height": 32.0,
+                "first_box_x": 10.0,
+                "first_box_right_x": 42.0,
+                "segments": [
+                    {"text": "[A]:", "x1": 10.0, "x2": 42.0, "y1": 4.0, "y2": 36.0},
+                    {"text": "hi", "x1": 70.0, "x2": 92.0, "y1": 8.0, "y2": 34.0},
+                ],
+            },
+            {
+                "text": "[LongName]: hey",
+                "center_y": 60.0,
+                "top_y": 44.0,
+                "bottom_y": 76.0,
+                "line_height": 32.0,
+                "first_box_x": 12.0,
+                "first_box_right_x": 58.0,
+                "segments": [
+                    {"text": "[Long", "x1": 12.0, "x2": 34.0, "y1": 44.0, "y2": 76.0},
+                    {"text": "Name]:", "x1": 35.0, "x2": 58.0, "y1": 44.0, "y2": 76.0},
+                    {"text": "hey", "x1": 80.0, "x2": 102.0, "y1": 48.0, "y2": 74.0},
+                ],
+            },
+            {
+                "text": "YO",
+                "center_y": 50.0,
+                "top_y": 34.0,
+                "bottom_y": 66.0,
+                "line_height": 32.0,
+                "first_box_x": 80.0,
+                "first_box_right_x": 104.0,
+                "segments": [
+                    {"text": "YO", "x1": 80.0, "x2": 104.0, "y1": 34.0, "y2": 66.0},
+                ],
+            },
+        ],
+        median_line_h=32.0,
+        config={
+            "missing_prefix_min_anchor_lines": 2,
+            "missing_prefix_body_start_tolerance": 4.0,
+            "missing_prefix_span_right_padding": 4,
+            "missing_prefix_vertical_padding": 4,
+            "missing_prefix_min_span_nonzero_pixels": 500,
+            "missing_prefix_min_span_density": 0.2,
+            "missing_prefix_max_span_density": 0.5,
+            "missing_prefix_max_largest_component_fraction": 0.8,
+            "missing_prefix_min_line_height_fraction": 0.8,
+            "missing_prefix_max_line_height_fraction": 1.2,
+        },
+    )
+
+    assert layout["has_learned_layout"] is True
+    assert layout["anchor_count"] == 2
+    assert evidence[-1]["has_missing_prefix_evidence"] is True
+    assert evidence[-1]["within_body_start_range"] is True
+    assert evidence[-1]["probe_nonzero_pixels"] > 0
+    assert evidence[-1]["probe_density"] > 0.2
+
+
+def test_compute_prefix_evidence_for_lines_negative_case_without_anchors():
+    mask = np.zeros((120, 160), dtype=np.uint8)
+    mask[30:70, 10:30] = 255
+
+    layout, evidence = compute_prefix_evidence_for_lines(
+        mask,
+        [
+            {
+                "text": "continuation",
+                "center_y": 50.0,
+                "top_y": 34.0,
+                "bottom_y": 66.0,
+                "line_height": 32.0,
+                "first_box_x": 90.0,
+                "first_box_right_x": 114.0,
+                "segments": [
+                    {"text": "continuation", "x1": 90.0, "x2": 114.0, "y1": 34.0, "y2": 66.0},
+                ],
+            }
+        ],
+        median_line_h=32.0,
+        config={
+            "missing_prefix_min_anchor_lines": 2,
+        },
+    )
+
+    assert layout["has_learned_layout"] is False
+    assert evidence[0]["has_missing_prefix_evidence"] is False
+
+
+def test_compute_prefix_evidence_for_lines_negative_case_outside_body_start_range():
+    mask = np.zeros((120, 200), dtype=np.uint8)
+    mask[30:70, 10:44] = 255
+
+    _, evidence = compute_prefix_evidence_for_lines(
+        mask,
+        [
+            {
+                "text": "[A]: hi",
+                "center_y": 20.0,
+                "top_y": 4.0,
+                "bottom_y": 36.0,
+                "line_height": 32.0,
+                "first_box_x": 10.0,
+                "first_box_right_x": 42.0,
+                "segments": [
+                    {"text": "[A]:", "x1": 10.0, "x2": 42.0, "y1": 4.0, "y2": 36.0},
+                    {"text": "hi", "x1": 70.0, "x2": 92.0, "y1": 8.0, "y2": 34.0},
+                ],
+            },
+            {
+                "text": "[LongName]: hey",
+                "center_y": 60.0,
+                "top_y": 44.0,
+                "bottom_y": 76.0,
+                "line_height": 32.0,
+                "first_box_x": 12.0,
+                "first_box_right_x": 58.0,
+                "segments": [
+                    {"text": "[Long", "x1": 12.0, "x2": 34.0, "y1": 44.0, "y2": 76.0},
+                    {"text": "Name]:", "x1": 35.0, "x2": 58.0, "y1": 44.0, "y2": 76.0},
+                    {"text": "hey", "x1": 80.0, "x2": 102.0, "y1": 48.0, "y2": 74.0},
+                ],
+            },
+            {
+                "text": "noise",
+                "center_y": 50.0,
+                "top_y": 34.0,
+                "bottom_y": 66.0,
+                "line_height": 32.0,
+                "first_box_x": 130.0,
+                "first_box_right_x": 150.0,
+                "segments": [
+                    {"text": "noise", "x1": 130.0, "x2": 150.0, "y1": 34.0, "y2": 66.0},
+                ],
+            },
+        ],
+        median_line_h=32.0,
+        config={
+            "missing_prefix_min_anchor_lines": 2,
+            "missing_prefix_body_start_tolerance": 4.0,
+            "missing_prefix_span_right_padding": 4,
+            "missing_prefix_vertical_padding": 4,
+            "missing_prefix_min_span_nonzero_pixels": 500,
+            "missing_prefix_min_span_density": 0.2,
+            "missing_prefix_max_span_density": 0.5,
+            "missing_prefix_max_largest_component_fraction": 0.8,
+            "missing_prefix_min_line_height_fraction": 0.8,
+            "missing_prefix_max_line_height_fraction": 1.2,
+        },
+    )
+
+    assert evidence[-1]["within_body_start_range"] is False
+    assert evidence[-1]["has_missing_prefix_evidence"] is False
+
+
+def test_compute_prefix_evidence_for_lines_negative_case_blob_rejected():
+    mask = np.zeros((120, 160), dtype=np.uint8)
+    mask[30:70, 10:76] = 255
+
+    _, evidence = compute_prefix_evidence_for_lines(
+        mask,
+        [
+            {
+                "text": "[A]: hi",
+                "center_y": 20.0,
+                "top_y": 4.0,
+                "bottom_y": 36.0,
+                "line_height": 32.0,
+                "first_box_x": 10.0,
+                "first_box_right_x": 42.0,
+                "segments": [
+                    {"text": "[A]:", "x1": 10.0, "x2": 42.0, "y1": 4.0, "y2": 36.0},
+                    {"text": "hi", "x1": 70.0, "x2": 92.0, "y1": 8.0, "y2": 34.0},
+                ],
+            },
+            {
+                "text": "[B]: yo",
+                "center_y": 60.0,
+                "top_y": 44.0,
+                "bottom_y": 76.0,
+                "line_height": 32.0,
+                "first_box_x": 10.0,
+                "first_box_right_x": 42.0,
+                "segments": [
+                    {"text": "[B]:", "x1": 10.0, "x2": 42.0, "y1": 44.0, "y2": 76.0},
+                    {"text": "yo", "x1": 72.0, "x2": 94.0, "y1": 48.0, "y2": 74.0},
+                ],
+            },
+            {
+                "text": "garbage",
+                "center_y": 50.0,
+                "top_y": 34.0,
+                "bottom_y": 66.0,
+                "line_height": 32.0,
+                "first_box_x": 80.0,
+                "first_box_right_x": 104.0,
+                "segments": [
+                    {"text": "garbage", "x1": 80.0, "x2": 104.0, "y1": 34.0, "y2": 66.0},
+                ],
+            },
+        ],
+        median_line_h=32.0,
+        config={
+            "missing_prefix_min_anchor_lines": 2,
+            "missing_prefix_body_start_tolerance": 4.0,
+            "missing_prefix_span_right_padding": 4,
+            "missing_prefix_vertical_padding": 4,
+            "missing_prefix_min_span_nonzero_pixels": 500,
+            "missing_prefix_min_span_density": 0.2,
+            "missing_prefix_max_span_density": 0.5,
+            "missing_prefix_max_largest_component_fraction": 0.8,
+            "missing_prefix_min_line_height_fraction": 0.8,
+            "missing_prefix_max_line_height_fraction": 1.2,
+        },
+    )
+
+    assert evidence[-1]["probe_density"] > 0.5
+    assert evidence[-1]["probe_largest_component_fraction"] > 0.8
+    assert evidence[-1]["has_missing_prefix_evidence"] is False
 
 
 def test_remove_small_components_drops_tiny_islands():

@@ -142,6 +142,7 @@ def collect_normalized_records(
     all_buffer,
     *,
     line_ys_by_channel=None,
+    raw_line_prefix_evidence_by_channel=None,
     raw_continuation_y_gaps=None,
 ) -> list[dict[str, Any]]:
     """Return normalized records extracted from one screenshot."""
@@ -151,11 +152,18 @@ def collect_normalized_records(
         lines = lines_by_channel[chat_type]
         buffer = team_buffer if chat_type == "team" else all_buffer
         ys = (line_ys_by_channel or {}).get(chat_type) or []
+        prefix_evidence = (raw_line_prefix_evidence_by_channel or {}).get(chat_type) or []
         max_y_gap = (raw_continuation_y_gaps or {}).get(chat_type)
 
         for i, line in enumerate(lines):
             y = ys[i] if i < len(ys) else None
-            finished = buffer.feed(line, y, max_y_gap=max_y_gap)
+            evidence = prefix_evidence[i] if i < len(prefix_evidence) else None
+            finished = buffer.feed(
+                line,
+                y,
+                max_y_gap=max_y_gap,
+                prefix_evidence=evidence,
+            )
             record = normalize_finished_message(finished, chat_type)
             if record:
                 records.append(record)
@@ -178,6 +186,7 @@ def process_lines(
     hero_logger,
     metrics=None,
     line_ys_by_channel=None,
+    raw_line_prefix_evidence_by_channel=None,
     raw_continuation_y_gaps=None,
 ) -> None:
     """Process one screenshot's OCR lines as an isolated parsing session."""
@@ -186,6 +195,7 @@ def process_lines(
         team_buffer,
         all_buffer,
         line_ys_by_channel=line_ys_by_channel,
+        raw_line_prefix_evidence_by_channel=raw_line_prefix_evidence_by_channel,
         raw_continuation_y_gaps=raw_continuation_y_gaps,
     )
     for record in records:
@@ -204,6 +214,7 @@ def collect_screenshot_messages(
     *,
     include_hero_lines: bool = False,
     line_ys_by_channel=None,
+    raw_line_prefix_evidence_by_channel=None,
     raw_continuation_y_gaps=None,
 ) -> dict[str, list[str]]:
     """Return filtered, per-screenshot parsed messages for regression-style checks."""
@@ -213,6 +224,7 @@ def collect_screenshot_messages(
         MessageBuffer(),
         MessageBuffer(),
         line_ys_by_channel=line_ys_by_channel,
+        raw_line_prefix_evidence_by_channel=raw_line_prefix_evidence_by_channel,
         raw_continuation_y_gaps=raw_continuation_y_gaps,
     )
     for record in records:

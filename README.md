@@ -136,6 +136,13 @@ Key pipeline parameters (per profile under `ocr.profiles.<name>.pipeline`):
 | `scale_factor` | Upscale factor before OCR |
 | `high_quality_ocr` | Enables extra morphological steps and component filtering |
 | `y_merge_threshold` | Max Y distance (px) to merge OCR boxes into one line |
+| `max_continuation_y_gap_factor` | Reject continuation joins when the next line is too far below the previous one |
+| `missing_prefix_min_anchor_lines` | Minimum number of valid prefixed chat lines needed before missing-prefix recovery is attempted |
+| `missing_prefix_body_start_tolerance` | Extra tolerance added around the learned body-start range for variable player-name widths |
+| `missing_prefix_min_span_nonzero_pixels` | Minimum mask pixels required inside the learned prefix span before a bare line is treated as a new `[unknown]` speaker |
+| `missing_prefix_min_span_density` | Minimum fill density required in the learned prefix span |
+| `missing_prefix_max_span_density` | Upper density guard to reject large filled blobs and background bleed |
+| `missing_prefix_max_largest_component_fraction` | Reject spans dominated by a single connected component rather than text-like structure |
 | `min_ocr_box_height` | Filter boxes shorter than this (noise rejection) |
 | `team_hsv_lower/upper` | HSV bounds for team chat color (blue) |
 | `all_hsv_lower/upper` | HSV bounds for all-chat color (orange) |

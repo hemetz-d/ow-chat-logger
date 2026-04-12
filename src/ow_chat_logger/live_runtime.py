@@ -291,6 +291,7 @@ def processing_worker(
                 team_buffer,
                 all_buffer,
                 line_ys_by_channel=debug_data.get("raw_line_ys"),
+                raw_line_prefix_evidence_by_channel=debug_data.get("raw_line_prefix_evidence"),
                 raw_continuation_y_gaps=debug_data.get("raw_continuation_y_gaps"),
             )
             for record in confirmation_gate.accept_frame(records):

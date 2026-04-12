@@ -1,12 +1,32 @@
 from ow_chat_logger.parser import classify_line
 
+
 class MessageBuffer:
     def __init__(self):
         self.current = None
         self.in_system_message = False
         self._last_y: float | None = None
 
-    def feed(self, line: str, y: float | None = None, max_y_gap: float | None = None):
+    def _start_message(self, classification: dict[str, object], y: float | None):
+        self.in_system_message = False
+        self._last_y = y
+        finished = self.current
+        self.current = {
+            "player": classification["player"],
+            "hero": classification["hero"],
+            "msg": classification["msg"],
+            "category": classification["category"],
+            "ocr_fix_closing_bracket": classification.get("ocr_fix_closing_bracket", False),
+        }
+        return finished
+
+    def feed(
+        self,
+        line: str,
+        y: float | None = None,
+        max_y_gap: float | None = None,
+        prefix_evidence: dict | None = None,
+    ):
         classification = classify_line(line)
         category = classification["category"]
 
@@ -25,6 +45,17 @@ class MessageBuffer:
         # -----------------------
         if category == "continuation":
             text = classification["msg"].strip()
+            if (prefix_evidence or {}).get("has_missing_prefix_evidence"):
+                return self._start_message(
+                    {
+                        "category": "standard",
+                        "player": "unknown",
+                        "hero": "",
+                        "msg": text,
+                        "ocr_fix_closing_bracket": False,
+                    },
+                    y,
+                )
             # Ignore continuation if no active message from a player
             if not self.current or self.in_system_message:
                 return None
@@ -43,19 +74,7 @@ class MessageBuffer:
         # -----------------------
         # NEW PLAYER MESSAGE
         # -----------------------
-        self.in_system_message = False
-        self._last_y = y
-        finished = self.current
-
-        self.current = {
-            "player": classification["player"],
-            "hero": classification["hero"],
-            "msg": classification["msg"],
-            "category": category,
-            "ocr_fix_closing_bracket": classification.get("ocr_fix_closing_bracket", False),
-        }
-
-        return finished
+        return self._start_message(classification, y)
 
     def flush(self):
         """Return any buffered message and clear state (e.g. on shutdown).

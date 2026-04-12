@@ -17,8 +17,8 @@ These failures are **pre-existing** - they were present before the T-26 normaliz
 ### example_05 - two consecutive messages merged into one
 - **Channel:** team_lines
 - **Expected two records:** `[Flea]: cipe` and `[Cipe]: YO`
-- **Actual one record:** `[Flea]: Cipe YO`
-- **Root cause:** The raw OCR detects `Flea: Cipe` and `YO` as separate lines, but the player prefix `[Cipe]:` of the second line is already gone at the OCR stage — likely because the trailing `e` of `Cipe` morphed into an unrecognisable glyph, preventing the bracket group from being read at all. Without a valid prefix, `Cipe YO` is classified as continuation and appended to the Flea record. The capitalised `C` in the continuation fragment is OCR-introduced (same glyph confusion as example_04 issue 2).
+- **Current actual:** `[Flea]: Cipe` and `[unknown]: YO`
+- **Root cause:** The new missing-prefix heuristic correctly splits the bare `YO` line away from the previous Flea message by detecting mask pixels in the prefix band, so the old merge bug is fixed. The remaining limitation is speaker recovery: the `[Cipe]:` prefix is absent from OCR, so the second record is intentionally emitted as `[unknown]` rather than being misattributed.
 - **See also:** example_13 (same root cause class).
 
 ### example_09 - line missing from actual entirely
@@ -45,8 +45,8 @@ These failures are **pre-existing** - they were present before the T-26 normaliz
 ### example_13 - two consecutive messages merged into one
 - **Channel:** team_lines
 - **Expected two records:** `[A7X]: sup dawgs` and `[A7X]: xdd`
-- **Actual one record:** `[A7X]: sup dawgs xdd`
-- **Root cause:** The `[A7X]:` prefix of the second message is fully absent from the raw OCR data — it is not misread, it simply does not appear. OCR only produces the bare content `xdd`, which has no prefix and falls to continuation, appending to the in-flight A7X record. Because both messages share the same player name, the merged result looks plausible and gives no parse-time signal that anything went wrong.
+- **Current actual:** `[A7X]: sup dawgs` and `[unknown]: xdd`
+- **Root cause:** The new missing-prefix heuristic now detects that `xdd` has a prefix-sized block of chat-colored mask pixels to its left, so it is split into a new record instead of being appended. The unresolved limitation is that the true `[A7X]:` prefix is still missing from OCR entirely, so the recovered line is logged as `[unknown]`.
 - **See also:** example_05 (same root cause class).
 
 ### example_14 - multi-line garbage bleed on two messages

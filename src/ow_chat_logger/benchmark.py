@@ -99,6 +99,7 @@ def _benchmark_case(
     actual_lines = collect_screenshot_messages(
         debug_data["raw_lines"],
         line_ys_by_channel=debug_data.get("raw_line_ys"),
+        raw_line_prefix_evidence_by_channel=debug_data.get("raw_line_prefix_evidence"),
         raw_continuation_y_gaps=debug_data.get("raw_continuation_y_gaps"),
     )
     team_diff = _channel_diff(actual_lines["team_lines"], list(expected.get("team_lines") or []))

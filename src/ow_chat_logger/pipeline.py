@@ -10,8 +10,9 @@ import numpy as np
 from ow_chat_logger.config import CONFIG, resolve_ocr_profile
 from ow_chat_logger.image_processing import (
     clean_mask_steps,
+    compute_prefix_evidence_for_lines,
     create_chat_masks,
-    reconstruct_lines_with_ys,
+    reconstruct_line_data,
 )
 from ow_chat_logger.ocr import OCRBackend, ResolvedOCRProfile
 
@@ -124,11 +125,29 @@ def extract_chat_debug_data(
 
     parse_started = time.perf_counter()
     reconstructed = {
-        key: reconstruct_lines_with_ys(ocr_results[key], cfg)
+        key: reconstruct_line_data(ocr_results[key], cfg)
         for key in ("team", "all")
     }
-    out = {key: [text for text, _ in pairs] for key, (pairs, _) in reconstructed.items()}
-    raw_line_ys = {key: [y for _, y in pairs] for key, (pairs, _) in reconstructed.items()}
+    out = {
+        key: [str(line["text"]) for line in lines]
+        for key, (lines, _) in reconstructed.items()
+    }
+    raw_line_ys = {
+        key: [float(line["center_y"]) for line in lines]
+        for key, (lines, _) in reconstructed.items()
+    }
+    prefix_analysis = {
+        key: compute_prefix_evidence_for_lines(masks[key], lines, median_h, cfg)
+        for key, (lines, median_h) in reconstructed.items()
+    }
+    raw_channel_layouts = {
+        key: layout
+        for key, (layout, _) in prefix_analysis.items()
+    }
+    raw_line_prefix_evidence = {
+        key: evidence
+        for key, (_, evidence) in prefix_analysis.items()
+    }
 
     gap_factor = cfg.get("max_continuation_y_gap_factor")
     raw_continuation_y_gaps: dict[str, float | None] = {
@@ -146,6 +165,8 @@ def extract_chat_debug_data(
         "ocr_skipped": ocr_skipped,
         "raw_lines": out,
         "raw_line_ys": raw_line_ys,
+        "raw_channel_layouts": raw_channel_layouts,
+        "raw_line_prefix_evidence": raw_line_prefix_evidence,
         "raw_continuation_y_gaps": raw_continuation_y_gaps,
         "timings": {
             "preprocess_seconds": preprocess_seconds,

@@ -200,6 +200,89 @@ def test_continuation_gap_ignored_when_threshold_is_none():
     assert result["msg"] == "hello extra text"
 
 
+def test_continuation_with_prefix_evidence_starts_unknown_message():
+    actual = collect_screenshot_messages(
+        {
+            "team": ["[Alice] : hello", "YO"],
+            "all": [],
+        },
+        raw_line_prefix_evidence_by_channel={
+            "team": [
+                {"has_missing_prefix_evidence": False},
+                {"has_missing_prefix_evidence": True},
+            ],
+            "all": [],
+        },
+    )
+
+    assert actual == {
+        "team_lines": ["[Alice]: hello", "[unknown]: YO"],
+        "all_lines": [],
+    }
+
+
+def test_continuation_without_prefix_evidence_stays_appended():
+    actual = collect_screenshot_messages(
+        {
+            "team": ["[Alice] : hello", "extra text"],
+            "all": [],
+        },
+        raw_line_prefix_evidence_by_channel={
+            "team": [
+                {"has_missing_prefix_evidence": False},
+                {"has_missing_prefix_evidence": False},
+            ],
+            "all": [],
+        },
+    )
+
+    assert actual == {
+        "team_lines": ["[Alice]: hello extra text"],
+        "all_lines": [],
+    }
+
+
+def test_prefix_evidence_can_start_unknown_without_existing_message():
+    actual = collect_screenshot_messages(
+        {
+            "team": ["YO"],
+            "all": [],
+        },
+        raw_line_prefix_evidence_by_channel={
+            "team": [{"has_missing_prefix_evidence": True}],
+            "all": [],
+        },
+    )
+
+    assert actual == {
+        "team_lines": ["[unknown]: YO"],
+        "all_lines": [],
+    }
+
+
+def test_prefix_evidence_overrides_large_y_gap_and_starts_unknown():
+    actual = collect_screenshot_messages(
+        {
+            "team": ["[Alice] : hello", "YO"],
+            "all": [],
+        },
+        line_ys_by_channel={"team": [10.0, 200.0], "all": []},
+        raw_line_prefix_evidence_by_channel={
+            "team": [
+                {"has_missing_prefix_evidence": False},
+                {"has_missing_prefix_evidence": True},
+            ],
+            "all": [],
+        },
+        raw_continuation_y_gaps={"team": 50.0, "all": None},
+    )
+
+    assert actual == {
+        "team_lines": ["[Alice]: hello", "[unknown]: YO"],
+        "all_lines": [],
+    }
+
+
 def test_collect_screenshot_messages_strips_report_suffix_for_hero_lines_when_enabled():
     actual = collect_screenshot_messages(
         {

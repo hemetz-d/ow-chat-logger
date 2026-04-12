@@ -186,6 +186,7 @@ def run_analyze(args) -> int:
     final_lines = collect_screenshot_messages(
         debug_data["raw_lines"],
         line_ys_by_channel=debug_data.get("raw_line_ys"),
+        raw_line_prefix_evidence_by_channel=debug_data.get("raw_line_prefix_evidence"),
         raw_continuation_y_gaps=debug_data.get("raw_continuation_y_gaps"),
     )
     report = {
@@ -205,6 +206,10 @@ def run_analyze(args) -> int:
         "ocr_results_serialized": _serialize_ocr_results(debug_data),
         "raw_lines": debug_data["raw_lines"],
         "raw_line_ys": debug_data.get("raw_line_ys") or {"team": [], "all": []},
+        "raw_channel_layouts": debug_data.get("raw_channel_layouts")
+        or {"team": {}, "all": {}},
+        "raw_line_prefix_evidence": debug_data.get("raw_line_prefix_evidence")
+        or {"team": [], "all": []},
         "raw_continuation_y_gaps": debug_data.get("raw_continuation_y_gaps")
         or {"team": None, "all": None},
         "final_lines": final_lines,
