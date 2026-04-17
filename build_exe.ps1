@@ -64,4 +64,10 @@ Invoke-Step "Building executable with Nuitka..." {
 }
 Write-Host "Standalone build complete under dist\\" -ForegroundColor Green
 
+Write-Host "Packaging release zip..." -ForegroundColor Yellow
+$zipPath = "dist\ow-chat-logger-windows.zip"
+Remove-Item -Force -ErrorAction SilentlyContinue $zipPath
+Compress-Archive -Path "dist\nuitka_entry.dist\*" -DestinationPath $zipPath -CompressionLevel Optimal
+Write-Host "Release zip ready: $zipPath" -ForegroundColor Green
+
 Write-Host "Build finished." -ForegroundColor Cyan
