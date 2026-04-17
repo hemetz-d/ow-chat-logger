@@ -17,20 +17,15 @@ def _import_winrt_modules():
 
 class OCREngine(WindowsOCRBackend):
     def __init__(self, languages):
-        original = _windows._import_winrt_modules
-        _windows._import_winrt_modules = _import_winrt_modules
-        try:
-            super().__init__(
-                ResolvedOCRProfile(
-                    name="legacy_windows",
-                    engine_id="windows",
-                    languages=list(languages),
-                    pipeline={},
-                    settings={},
-                )
+        super().__init__(
+            ResolvedOCRProfile(
+                name="legacy_windows",
+                engine_id="windows",
+                languages=list(languages),
+                pipeline={},
+                settings={},
             )
-        finally:
-            _windows._import_winrt_modules = original
+        )
 
 
 __all__ = ["OCREngine", "_await_async_operation", "_import_winrt_modules"]
