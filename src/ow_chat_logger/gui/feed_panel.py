@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import tkinter as tk
-from datetime import datetime
 
 import customtkinter as ctk
 
@@ -12,7 +11,6 @@ from ow_chat_logger.gui.color_utils import hsv_bounds_to_hex
 from ow_chat_logger.gui.config_io import load_ui_config
 
 _MAX_ROWS = 500
-_DATE_GAP_SECONDS = 120
 
 
 # ── Message row widget ────────────────────────────────────────────────────────
@@ -167,7 +165,6 @@ class FeedPanel(ctk.CTkFrame):
         )
         self._count = 0
         self._rows: list[tk.Widget] = []
-        self._last_ts: datetime | None = None
         self._auto_scroll = tk.BooleanVar(value=True)
         self._empty_frame: ctk.CTkFrame | None = None
         self._jump_pill: ctk.CTkButton | None = None
@@ -314,12 +311,6 @@ class FeedPanel(ctk.CTkFrame):
         self._count += 1
         self._count_pill.configure(text=str(self._count))
 
-        # Date separator when there's a gap
-        ts_dt = _parse_ts(entry.timestamp)
-        if self._should_insert_separator(ts_dt):
-            self._append_separator(ts_dt)
-        self._last_ts = ts_dt
-
         # Hairline divider above this row (except for the first row)
         if self._rows:
             divider = ctk.CTkFrame(
@@ -352,43 +343,9 @@ class FeedPanel(ctk.CTkFrame):
             w.destroy()
         self._rows.clear()
         self._count = 0
-        self._last_ts = None
         self._count_pill.configure(text="0")
         self._show_empty_state()
         self._hide_jump_pill()
-
-    # ── Date separator ────────────────────────────────────────────────────────
-
-    def _should_insert_separator(self, ts: datetime | None) -> bool:
-        if ts is None:
-            return False
-        if self._last_ts is None:
-            return True
-        if ts.date() != self._last_ts.date():
-            return True
-        return (ts - self._last_ts).total_seconds() >= _DATE_GAP_SECONDS
-
-    def _append_separator(self, ts: datetime | None) -> None:
-        if ts is None:
-            return
-        label = _format_separator(ts)
-        sep = ctk.CTkFrame(self._list, fg_color="transparent")
-        sep.pack(fill="x", pady=(14, 6))
-        sep.grid_columnconfigure(0, weight=1)
-        sep.grid_columnconfigure(2, weight=1)
-        ctk.CTkFrame(sep, height=1, fg_color=T.BORDER_FAINT, corner_radius=0).grid(
-            row=0, column=0, sticky="ew", padx=(16, 10)
-        )
-        ctk.CTkLabel(
-            sep,
-            text=label,
-            text_color=T.TEXT_MUTED,
-            font=T.font_caption(),
-        ).grid(row=0, column=1)
-        ctk.CTkFrame(sep, height=1, fg_color=T.BORDER_FAINT, corner_radius=0).grid(
-            row=0, column=2, sticky="ew", padx=(10, 16)
-        )
-        self._rows.append(sep)
 
     # ── Scroll / jump-to-latest ───────────────────────────────────────────────
 
@@ -441,24 +398,3 @@ class FeedPanel(ctk.CTkFrame):
         self.after(400, self._poll_scroll)
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _parse_ts(text: str) -> datetime | None:
-    if not text:
-        return None
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%H:%M:%S"):
-        try:
-            return datetime.strptime(text, fmt)
-        except ValueError:
-            continue
-    return None
-
-
-def _format_separator(ts: datetime) -> str:
-    today = datetime.now().date()
-    days = (today - ts.date()).days
-    if days == 0:
-        return f"Today · {ts.strftime('%H:%M')}"
-    if days == 1:
-        return f"Yesterday · {ts.strftime('%H:%M')}"
-    return ts.strftime("%a %b %d · %H:%M")
