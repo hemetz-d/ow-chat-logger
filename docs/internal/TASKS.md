@@ -25,6 +25,13 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-31 | Duplicate frame-processing block in `live_runtime.py` | structural | 🔴 `open` | — |
 | T-32 | Stale "Related tasks" references in `KNOWN_FAILURES.md` | smell | 🔴 `open` | — |
 | T-33 | Undocumented regression failures for example_22/23/24 | smell | 🔴 `open` | — |
+| T-34 | Add a Windows installer flow for packaged builds | structural | 🔴 `open` | — |
+| T-35 | Packaged app writes runtime data next to the exe | structural | 🔴 `open` | — |
+| T-36 | Packaged executable is missing Windows app metadata and icon polish | smell | 🔴 `open` | — |
+| T-37 | No code-signing path for release artifacts | structural | 🔴 `open` | — |
+| T-38 | No release artifact/versioning workflow for packaged builds | structural | 🔴 `open` | — |
+| T-39 | No app-update strategy for Windows releases | structural | ⚫ `deferred` | — |
+| T-40 | Crash experience relies on logs only and exits abruptly | structural | 🔴 `open` | — |
 | T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | ⚫ `deferred` | — |
 | T-17 | T-15 false positive: legitimate names ending in `l` stripped when bracket is missing | bug | ⚫ `deferred` | — |
 | T-01 | Y-anchor drift in `reconstruct_lines` | bug | 🟢 `done` | 2026-04-03 |
@@ -111,6 +118,90 @@ In several screenshots (example_09, example_12, example_14) the team-chat text c
 **Fix direction:** Extract the shared block into a helper (e.g. `process_frame_debug(screenshot, ocr, profile, metrics, started)`) and have both `extract_chat_lines_for_live` and `processing_worker` call it. Alternatively, if `extract_chat_lines_for_live` is genuinely dead, delete it and migrate its tests to exercise `processing_worker` via a synthetic frame queue.
 
 **Test surface:** `tests/test_live_runtime.py` — existing tests for `extract_chat_lines_for_live` become the contract test for the new helper.
+
+---
+
+### T-34 · Add a Windows installer flow for packaged builds
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `build_exe.ps1`, `packaging/`, release process
+- **Completed:** —
+
+The project currently produces a portable Nuitka folder under `dist\ow-chat-logger.dist\`, but there is no installer, Start Menu integration, desktop shortcut flow, or uninstaller. This is workable for local testing, but it is not a polished Windows distribution story.
+
+**Fix direction:** Add an installer path for Windows releases using a standard packaging tool (for example Inno Setup, WiX, or MSIX). The installer should install under `Program Files`, register an uninstaller, create a Start Menu shortcut, and optionally offer a desktop shortcut. Keep the existing portable-folder build available for local smoke testing.
+
+**Test surface:** Manual release validation on a clean Windows machine or VM — install, launch from Start Menu, uninstall, and confirm the app is removed cleanly.
+
+---
+
+### T-35 · Packaged app writes runtime data next to the exe
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/config.py`, packaged runtime path resolution
+- **Completed:** —
+
+For packaged runs, runtime output currently defaults to a visible sibling folder (`OW Chat Logger Data`) next to the executable. That is acceptable for a portable folder on the desktop, but it is not appropriate for an installed app under `Program Files`, where normal users should not write data beside the binary.
+
+**Fix direction:** Separate portable-mode and installed-mode data locations. Keep config under `%APPDATA%\ow-chat-logger\`, but move logs/runtime output for installed runs to `%LOCALAPPDATA%\ow-chat-logger\` (or `%PROGRAMDATA%` if a machine-wide model is preferred). The path logic should remain predictable and documented.
+
+**Test surface:** `tests/test_config_helpers.py`, `tests/test_live_runtime.py` — verify packaged path resolution for installed-mode runs and confirm the output directory is user-writable without admin rights.
+
+---
+
+### T-36 · Packaged executable is missing Windows app metadata and icon polish
+- **Severity:** smell
+- **State:** 🔴 `open`
+- **File:** `build_exe.ps1`, `packaging/` assets
+- **Completed:** —
+
+The current build focuses on technical packaging only. There is no tracked task for proper Windows executable metadata such as product name, company/publisher, file description, version resource, or branded icon. Without this, the app looks unfinished in Explorer and Windows security prompts.
+
+**Fix direction:** Add a real application icon and populate version/resource metadata in the packaged executable. Track the canonical product name, company string, and version source in one place so release builds stay consistent.
+
+**Test surface:** Manual inspection of the built exe in Explorer Properties, taskbar/shortcut icon rendering, and release artifact review before publishing.
+
+---
+
+### T-37 · No code-signing path for release artifacts
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** release process / CI / packaging docs
+- **Completed:** —
+
+Unsigned executables and installers create unnecessary Windows SmartScreen and trust friction. There is no documented signing process, no certificate handling plan, and no build hook for signing release artifacts.
+
+**Fix direction:** Decide on a signing strategy for Windows releases (certificate source, local vs CI signing, timestamping, secret handling) and integrate it into the release process. Even if signing is deferred for hobby builds, the release pipeline should have a clear slot for it.
+
+**Test surface:** Manual verification on a signed build — confirm the executable/installer shows the expected publisher and passes signature validation tools.
+
+---
+
+### T-38 · No release artifact/versioning workflow for packaged builds
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `pyproject.toml`, release docs, packaging/release scripts
+- **Completed:** —
+
+The project can build a local `dist\` folder, but there is no documented release artifact convention (for example zip vs installer), no versioned artifact naming, and no repeatable release workflow for publishing Windows builds.
+
+**Fix direction:** Define a release packaging workflow that produces versioned artifacts such as `ow-chat-logger-<version>-win64.zip` and/or installer equivalents. Tie the artifact version to the project version in a single source of truth and document the release steps.
+
+**Test surface:** Manual release dry run — build artifacts from a tagged version, verify naming/version consistency, and confirm a fresh machine can launch the shipped artifact.
+
+---
+
+### T-40 · Crash experience relies on logs only and exits abruptly
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/live_runtime.py`, `src/ow_chat_logger/config.py`
+- **Completed:** —
+
+When the packaged app crashes, the current behavior is primarily "write a traceback to `crash.log` and exit." This is useful for debugging, but not user-friendly. A non-technical user gets a disappearing console window or abrupt shutdown with little guidance about what happened or where to look next.
+
+**Fix direction:** Add a user-facing crash path for packaged runs that keeps the failure discoverable: print a concise error message with the crash-log location, and consider a minimal Windows dialog for fatal startup/runtime failures. Avoid swallowing tracebacks; the goal is better user guidance, not less diagnostic detail.
+
+**Test surface:** `tests/test_live_runtime.py` for crash-log behavior plus manual packaged-app validation to confirm the user sees a clear failure message.
 
 ---
 
@@ -217,6 +308,20 @@ The example_17 entry lists "Related tasks: T-27 (add hero-ban warning to SYSTEM_
 ---
 
 ## Deferred
+
+### T-39 · No app-update strategy for Windows releases
+- **Severity:** structural
+- **State:** ⚫ `deferred`
+- **File:** release/distribution strategy
+- **Completed:** —
+
+There is currently no update story for installed Windows builds. That is acceptable while distribution is still manual, but once installer-based releases exist, the project will need a position on how users receive updates (manual download, in-app checker, installer-driven upgrade flow, etc.).
+
+**Fix direction:** Revisit after installer/release packaging work lands. Decide whether updates remain manual or whether a lightweight update mechanism is worth the added maintenance and trust surface.
+
+**Test surface:** Depends on chosen approach; defer until a concrete update model exists.
+
+---
 
 ### T-07 · `DEFAULT_ALLOWLIST` hardcoded for EN+DE regardless of language config
 - **Severity:** structural
