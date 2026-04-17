@@ -389,6 +389,10 @@ def run_live_logger(
     metrics_log_path_override: str | None = None,
     ocr_profile_override: str | None = None,
 ) -> int:
+    # NOTE: the OCR profile (including its HSV ranges) is resolved once here and
+    # passed frozen to every frame. Config edits made through the GUI while a
+    # live session is running will not take effect until the session restarts.
+    # See TASKS.md T-42 for the follow-up that wires in a reload path.
     profile = resolve_ocr_profile(dict(CONFIG), ocr_profile_override)
     ocr = build_ocr_backend(profile)
 

@@ -22,7 +22,8 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-30 | Improve team-chat color masking for blue-on-blue scenarios | structural | 🔴 `open` | — |
 | T-32 | Stale "Related tasks" references in `KNOWN_FAILURES.md` | smell | 🔴 `open` | — |
 | T-33 | Undocumented regression failures for example_22/23/24 | smell | 🔴 `open` | — |
-| T-34 | Verify GUI chat-color settings propagate to all detection paths | structural | 🔴 `open` | — |
+| T-34 | Verify GUI chat-color settings propagate to all detection paths | structural | 🔵 `review` | — |
+| T-42 | Re-resolve OCR profile on config change during a live session | structural | 🔴 `open` | — |
 | T-35 | Expose in-game chat color options as presets for team/all chat | structural | 🔴 `open` | — |
 | T-36 | Capture regression screenshot fixtures for every chat-color preset | structural | 🔴 `open` | — |
 | T-38 | Detect "message contains embedded chat prefix" as a debug-snap anomaly | structural | 🔴 `open` | — |
@@ -82,7 +83,7 @@ In several screenshots (example_09, example_12, example_14) the team-chat text c
 
 ### T-34 · Verify GUI chat-color settings propagate to all detection paths
 - **Severity:** structural
-- **State:** 🔴 `open`
+- **State:** 🔵 `review`
 - **File:** `src/ow_chat_logger/gui/settings_panel.py:131-137`, `src/ow_chat_logger/gui/config_io.py`, `src/ow_chat_logger/image_processing.py`
 - **Completed:** —
 
@@ -194,6 +195,20 @@ Once the app ships via a Windows installer (T-39), users who installed an older 
 - Dev run detection: skip the check entirely when not running from an installed location (avoid nagging during development).
 
 **Test surface:** `tests/test_updater.py` — version comparison (semver parsing, pre-release handling), cache TTL honored, network-error path is silent, GUI banner state transitions. Stub the GitHub API response; do not hit the network in tests.
+
+---
+
+### T-42 · Re-resolve OCR profile on config change during a live session
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/live_runtime.py:392`, `src/ow_chat_logger/config.py` (LazyConfig / cache reset), GUI apply path in `src/ow_chat_logger/gui/`
+- **Completed:** —
+
+`run_live_logger` resolves the OCR profile once at startup and passes it frozen to every frame (see comment at `live_runtime.py:392`). When the user edits HSV values (or any other `profile.pipeline` key) through the settings panel while a live session is running, the change reaches the config file and `CONFIG` but not the running pipeline — masks keep using the pre-resolved snapshot until the user stops and restarts the logger. Discovered while writing the T-34 propagation tests.
+
+**Fix direction:** (a) Decide the reload boundary — per-frame re-resolution is cheap but spreads cost; a signal-driven reload (GUI "Apply" fires an event the processing worker consumes) is cleaner. (b) Make sure a reload does not reinitialize the OCR backend if the engine/languages did not change (avoid tearing down EasyOCR/Windows OCR on every HSV tweak). (c) Add a regression test that mutates HSV keys mid-session (simulated by invoking a reload hook between two `_process_frame_for_live` calls) and asserts the second frame's mask reflects the new range. (d) Update the T-34 docstring note on `run_live_logger` once this lands.
+
+**Test surface:** `tests/test_live_runtime.py` (or `tests/test_color_config_propagation.py` extension) — assert a reload hook makes a running pipeline pick up new HSV ranges without full restart.
 
 ---
 
