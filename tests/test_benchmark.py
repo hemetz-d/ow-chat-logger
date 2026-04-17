@@ -142,6 +142,50 @@ def test_run_benchmark_writes_json_and_csv_reports(monkeypatch, local_tmp_dir):
     assert rows[0]["status"] == "ok"
 
 
+def test_run_benchmark_resolves_profile_once_per_profile(monkeypatch, local_tmp_dir):
+    fixture_dir = local_tmp_dir("benchmark-resolve-once")
+    expected_payload = json.dumps({"team_lines": [], "all_lines": []})
+    for stem in ("a", "b", "c"):
+        (fixture_dir / f"{stem}.png").write_bytes(b"fake")
+        (fixture_dir / f"{stem}.expected.json").write_text(expected_payload, encoding="utf-8")
+
+    import ow_chat_logger.benchmark as benchmark_mod
+
+    real_resolve = benchmark_mod.resolve_ocr_profile
+    call_counts: dict[str, int] = {}
+
+    def counting_resolve(config=None, profile_name=None):
+        call_counts[profile_name or "<default>"] = call_counts.get(profile_name or "<default>", 0) + 1
+        return real_resolve(config, profile_name)
+
+    monkeypatch.setattr(benchmark_mod, "resolve_ocr_profile", counting_resolve)
+    monkeypatch.setattr(benchmark_mod, "load_rgb_image", lambda path: np.zeros((2, 2, 3), dtype=np.uint8))
+    monkeypatch.setattr(benchmark_mod, "build_ocr_backend", lambda profile: object())
+    monkeypatch.setattr(
+        benchmark_mod,
+        "extract_chat_debug_data",
+        lambda rgb_image, backend, config_overrides=None, ocr_profile=None: {
+            "raw_lines": {"team": [], "all": []},
+            "timings": {
+                "preprocess_seconds": 0.0,
+                "ocr_seconds": 0.0,
+                "parse_seconds": 0.0,
+            },
+        },
+    )
+
+    args = Namespace(
+        fixtures=str(fixture_dir),
+        profiles=["windows_default"],
+        benchmark_config=None,
+        json_out=None,
+        csv_out=None,
+    )
+
+    assert run_benchmark(args) == 0
+    assert call_counts.get("windows_default") == 1
+
+
 def test_run_benchmark_marks_unavailable_profiles(monkeypatch, local_tmp_dir):
     fixture_dir = local_tmp_dir("benchmark-unavailable")
     (fixture_dir / "fixture.png").write_bytes(b"fake")
