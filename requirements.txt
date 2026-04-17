@@ -10,6 +10,7 @@ winrt-Windows.Globalization
 winrt-Windows.Graphics.Imaging
 winrt-Windows.Media.Ocr
 winrt-Windows.Storage.Streams
+customtkinter>=5.2.0
 # Optional OCR backends:
 # easyocr
 # pytesseract

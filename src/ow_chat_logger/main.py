@@ -9,6 +9,11 @@ from ow_chat_logger.live_runtime import run_live_logger
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ow-chat-logger")
     parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="Launch the graphical interface.",
+    )
+    parser.add_argument(
         "--metrics",
         action="store_true",
         help="Enable periodic live runtime metrics logging.",
@@ -76,6 +81,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+    if args.gui:
+        from ow_chat_logger.gui.app import run_gui
+
+        return run_gui()
     if args.command == "analyze":
         return run_analyze(args)
     if args.command == "benchmark":

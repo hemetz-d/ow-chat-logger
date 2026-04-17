@@ -45,6 +45,9 @@ Invoke-Step "Building executable with Nuitka..." {
     --nofollow-import-to=ow_chat_logger.ocr.tesseract_backend `
     --assume-yes-for-downloads `
     --include-package=ow_chat_logger `
+    --include-package=customtkinter `
+    --include-package-data=customtkinter `
+    --include-package=darkdetect `
     --include-package=winrt `
     --include-package=winrt.runtime `
     --include-package=winrt.system `
