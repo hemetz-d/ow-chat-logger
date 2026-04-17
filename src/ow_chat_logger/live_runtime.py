@@ -414,7 +414,7 @@ def run_live_logger(
     finally:
         stop_event.set()
         capture_thread.join(timeout=1.0)
-        processing_thread.join(timeout=1.0)
+        processing_thread.join()
         flush_buffers(
             team_buffer,
             all_buffer,

@@ -14,7 +14,6 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 
 | ID | Title | Severity | State | Completed |
 |----|-------|----------|-------|-----------|
-| T-08 | Shutdown race on buffer flush | structural | 🔴 `open` | — |
 | T-10 | Dead commented-out code | smell | 🔴 `open` | — |
 | T-11 | CLI `--metrics` asymmetric flag | smell | 🔴 `open` | — |
 | T-12 | `ResolvedOCRProfile` mutable dict fields in frozen dataclass | structural | 🔴 `open` | — |
@@ -27,6 +26,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-30 | Improve team-chat color masking for blue-on-blue scenarios | structural | 🔴 `open` | — |
 | T-31 | Duplicate frame-processing block in `live_runtime.py` | structural | 🔴 `open` | — |
 | T-32 | Stale "Related tasks" references in `KNOWN_FAILURES.md` | smell | 🔴 `open` | — |
+| T-33 | Undocumented regression failures for example_22/23/24 | smell | 🔴 `open` | — |
 | T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | ⚫ `deferred` | — |
 | T-17 | T-15 false positive: legitimate names ending in `l` stripped when bracket is missing | bug | ⚫ `deferred` | — |
 | T-01 | Y-anchor drift in `reconstruct_lines` | bug | 🟢 `done` | 2026-04-03 |
@@ -35,6 +35,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-04 | `LazyConfig` write not thread-safe | structural | 🟢 `done` | 2026-04-03 |
 | T-05 | `OCREngine` dead threshold attributes | structural | 🟢 `done` | 2026-04-03 |
 | T-06 | Redundant crop on every live frame | structural | 🟢 `done` | 2026-04-06 |
+| T-08 | Shutdown race on buffer flush | structural | 🟢 `done` | 2026-04-17 |
 | T-09 | `OCREngine` has no swappable interface | structural | 🟢 `done` | 2026-04-03 |
 | T-15 | Trailing `l:` in player prefix should normalize to closing bracket | bug | 🟢 `done` | 2026-04-03 |
 | T-16 | Capital `I` closing-bracket OCR suffix not covered by T-15 | bug | 🟢 `done` | 2026-04-03 |
@@ -56,20 +57,6 @@ Detailed entries for completed tasks are not repeated below; see git history (co
 ---
 
 ## Structural Issues
-
-### T-08 · Shutdown race: buffer flush after non-guaranteed thread join
-- **Severity:** structural
-- **State:** 🔴 `open`
-- **File:** `src/ow_chat_logger/live_runtime.py:416-426`
-- **Completed:** —
-
-After `processing_thread.join(timeout=1.0)`, `flush_buffers` runs immediately on the main thread. If the processing worker did not exit within 1s, both threads can access `team_buffer` / `all_buffer` concurrently. `MessageBuffer` has no locking.
-
-**Fix direction:** After `stop_event.set()`, join the processing thread without a timeout (the worker will exit once `stop_event` is set and the queue drains), or check `processing_thread.is_alive()` before calling `flush_buffers` and log a warning if it's still running.
-
-**Test surface:** `tests/test_live_runtime.py` — validate that the processing thread has exited before flush is called.
-
----
 
 ### T-12 · `ResolvedOCRProfile` is frozen but contains mutable dicts
 - **Severity:** structural
@@ -238,6 +225,22 @@ The example_17 entry lists "Related tasks: T-27 (add hero-ban warning to SYSTEM_
 **Fix direction:** Re-run `pytest --run-ocr tests/test_regression_screenshots.py`, compare actual output for example_17 against the expected JSON, and either delete the entry or rewrite the root-cause explanation to reflect what remains after T-27 and T-28 landed.
 
 **Test surface:** The regression suite itself is the test — whatever example_17 now emits is the ground truth for the updated note.
+
+---
+
+### T-33 · Undocumented regression failures for example_22, example_23, example_24
+- **Severity:** smell
+- **State:** 🔴 `open`
+- **File:** `tests/fixtures/regression/KNOWN_FAILURES.md`, `tests/fixtures/regression/example_22.*`, `tests/fixtures/regression/example_23.*`, `tests/fixtures/regression/example_24.*`
+- **Completed:** —
+
+`pytest --run-ocr tests/test_regression_screenshots.py` reports 12 failures on master, but `KNOWN_FAILURES.md` only documents 9 of them (04, 05, 09, 11, 12, 13, 14, 17, 18). Three failing examples are undocumented:
+- **example_22** (team_lines): expected `[A7X]: ich gärtnere im busch deiner muter` + `[A7X]: xd`, actual emits unrelated `[Kastelg]: hi gooners` + `[AN]: what is this` — suggests either a wrong `expected.json` or a coloring/crop misclassification.
+- **example_23** and **example_24** (all_lines): both expect `[Power]: this is overwatch goodbye` followed by `[A7X]: epic!`, actual merges them into a single `[Power]: this is overwatch goodbye epicl` — looks like a missing-prefix / continuation-merge issue similar in shape to example_17.
+
+**Fix direction:** Triage each of the three fixtures. For each, decide whether (a) the expected JSON is wrong and should be updated, (b) it reveals a real bug and should be split off into its own task, or (c) it's a genuine OCR/masking limitation that belongs in `KNOWN_FAILURES.md`.
+
+**Test surface:** `tests/test_regression_screenshots.py` — these three examples.
 
 ---
 
