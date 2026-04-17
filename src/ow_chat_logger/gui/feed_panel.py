@@ -141,12 +141,12 @@ class FeedPanel(ctk.CTkFrame):
         if entry.category == "hero":
             tag = "hero"
             ts_prefix = f"{ts} "
-            body = f"{'HERO':>4} {entry.player} / {entry.text}\n"
+            body = f"{entry.player} / {entry.text}\n"
         else:
             ct = entry.chat_type.lower()
             tag = ct if ct in ("team", "all") else "all"
             ts_prefix = f"{ts} "
-            body = f"{entry.chat_type.upper():>4} {entry.player}: {entry.text}\n"
+            body = f"{entry.player}: {entry.text}\n"
 
         self._text.configure(state="normal")
         self._text.insert("end", ts_prefix, "ts")
