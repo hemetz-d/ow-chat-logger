@@ -35,9 +35,25 @@ $env:PYTHONPATH = Join-Path (Get-Location) "src"
 Invoke-Step "Building executable with Nuitka..." {
   python -m nuitka `
     --standalone `
+    --msvc=latest `
     --follow-imports `
+    --nofollow-import-to=easyocr `
+    --nofollow-import-to=torch `
+    --nofollow-import-to=torchvision `
+    --nofollow-import-to=pytesseract `
+    --nofollow-import-to=ow_chat_logger.ocr.easyocr_backend `
+    --nofollow-import-to=ow_chat_logger.ocr.tesseract_backend `
     --assume-yes-for-downloads `
     --include-package=ow_chat_logger `
+    --include-package=winrt `
+    --include-package=winrt.runtime `
+    --include-package=winrt.system `
+    --include-package=winrt.windows.foundation `
+    --include-package=winrt.windows.foundation.collections `
+    --include-package=winrt.windows.globalization `
+    --include-package=winrt.windows.graphics.imaging `
+    --include-package=winrt.windows.media.ocr `
+    --include-package=winrt.windows.storage.streams `
     --enable-plugin=tk-inter `
     --output-dir=dist `
     --output-filename=ow-chat-logger.exe `

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 
 from ow_chat_logger.config import merge_runtime_config, resolve_ocr_profile
 from ow_chat_logger.ocr.easyocr_backend import EasyOCRBackend
+from ow_chat_logger.ocr.registry import build_ocr_backend
 from ow_chat_logger.ocr.tesseract_backend import TesseractOCRBackend
 
 
@@ -89,3 +90,22 @@ def test_tesseract_backend_returns_boxes_and_confidence(monkeypatch):
     assert backend.run(np.zeros((2, 2), dtype=np.uint8)) == [
         ([[1.0, 2.0], [4.0, 2.0], [4.0, 6.0], [1.0, 6.0]], "keep", 95.0)
     ]
+
+
+def test_build_ocr_backend_imports_only_the_selected_engine(monkeypatch):
+    imported_modules = []
+
+    def fake_import_module(name):
+        imported_modules.append(name)
+        module = ModuleType(name)
+        module.WindowsOCRBackend = lambda profile: ("windows", profile.name)
+        module.EasyOCRBackend = lambda profile: ("easyocr", profile.name)
+        module.TesseractOCRBackend = lambda profile: ("tesseract", profile.name)
+        return module
+
+    monkeypatch.setattr("ow_chat_logger.ocr.registry.importlib.import_module", fake_import_module)
+
+    profile = resolve_ocr_profile(merge_runtime_config())
+
+    assert build_ocr_backend(profile) == ("windows", "windows_default")
+    assert imported_modules == ["ow_chat_logger.ocr.windows"]

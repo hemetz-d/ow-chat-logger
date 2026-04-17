@@ -183,6 +183,29 @@ def _builtin_ocr_profiles() -> dict[str, dict[str, Any]]:
     }
 
 
+def _restrict_packaged_ocr_config(ocr_config: dict[str, Any]) -> dict[str, Any]:
+    if not is_packaged_windows_run():
+        return ocr_config
+
+    profiles = ocr_config.get("profiles") or {}
+    windows_profiles = {
+        name: deepcopy(profile)
+        for name, profile in profiles.items()
+        if str(profile.get("engine", "")) == "windows"
+    }
+
+    if DEFAULT_OCR_PROFILE not in windows_profiles:
+        windows_profiles[DEFAULT_OCR_PROFILE] = deepcopy(_builtin_ocr_profiles()[DEFAULT_OCR_PROFILE])
+
+    restricted = deepcopy(ocr_config)
+    restricted["profiles"] = windows_profiles
+
+    if restricted.get("default_profile") not in windows_profiles:
+        restricted["default_profile"] = DEFAULT_OCR_PROFILE
+
+    return restricted
+
+
 def _deep_merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     merged = deepcopy(base)
     for key, value in override.items():
@@ -322,6 +345,7 @@ def _normalize_ocr_config(raw_config: dict[str, Any], user_data: dict[str, Any])
     normalized = deepcopy(raw_config)
     user_ocr = user_data.get("ocr") if isinstance(user_data.get("ocr"), dict) else {}
     normalized["ocr"] = _deep_merge_dict(_DEFAULT_CONFIG["ocr"], user_ocr)
+    normalized["ocr"] = _restrict_packaged_ocr_config(normalized["ocr"])
 
     has_explicit_ocr_profiles = bool(user_ocr.get("profiles"))
     legacy_overrides = {key: deepcopy(user_data[key]) for key in LEGACY_OCR_FLAT_KEYS if key in user_data}

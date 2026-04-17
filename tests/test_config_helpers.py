@@ -141,3 +141,44 @@ def test_environment_log_dir_overrides_packaged_default(monkeypatch):
     assert paths.log_dir == env_log_dir
     assert paths.chat_log == env_log_dir / "chat_log.csv"
     assert paths.crash_log == appdata / "ow-chat-logger" / "crash.log"
+
+
+def test_packaged_runtime_filters_non_windows_ocr_profiles(monkeypatch):
+    import ow_chat_logger.config as cfg_module
+
+    appdata = Path(__file__).resolve().parent / "_tmp_appdata_packaged_profiles"
+    config_dir = appdata / "ow-chat-logger"
+    exe_dir = Path(__file__).resolve().parent / "_tmp_packaged_app_profiles"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    exe_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setenv("APPDATA", str(appdata))
+    monkeypatch.delenv("OW_CHAT_LOG_DIR", raising=False)
+    monkeypatch.delenv("OW_CHAT_LOGGER_CONFIG", raising=False)
+    monkeypatch.setattr(cfg_module.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(cfg_module.sys, "executable", str(exe_dir / "ow-chat-logger.exe"))
+    (config_dir / "config.json").write_text(
+        """
+        {
+          "ocr": {
+            "default_profile": "easyocr_master_baseline",
+            "profiles": {
+              "easyocr_master_baseline": {
+                "engine": "easyocr",
+                "languages": ["en"],
+                "pipeline": {},
+                "settings": {}
+              }
+            }
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    cfg_module.reset_config()
+    config = cfg_module.load_config()
+
+    assert config["ocr"]["default_profile"] == "windows_default"
+    assert sorted(config["ocr"]["profiles"]) == ["windows_default"]
+    assert cfg_module.resolve_ocr_profile(config).engine_id == "windows"
