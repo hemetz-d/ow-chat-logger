@@ -25,6 +25,9 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-31 | Duplicate frame-processing block in `live_runtime.py` | structural | 🔴 `open` | — |
 | T-32 | Stale "Related tasks" references in `KNOWN_FAILURES.md` | smell | 🔴 `open` | — |
 | T-33 | Undocumented regression failures for example_22/23/24 | smell | 🔴 `open` | — |
+| T-34 | Verify GUI chat-color settings propagate to all detection paths | structural | 🔴 `open` | — |
+| T-35 | Expose in-game chat color options as presets for team/all chat | structural | 🔴 `open` | — |
+| T-36 | Capture regression screenshot fixtures for every chat-color preset | structural | 🔴 `open` | — |
 | T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | ⚫ `deferred` | — |
 | T-17 | T-15 false positive: legitimate names ending in `l` stripped when bracket is missing | bug | ⚫ `deferred` | — |
 | T-01 | Y-anchor drift in `reconstruct_lines` | bug | 🟢 `done` | 2026-04-03 |
@@ -111,6 +114,52 @@ In several screenshots (example_09, example_12, example_14) the team-chat text c
 **Fix direction:** Extract the shared block into a helper (e.g. `process_frame_debug(screenshot, ocr, profile, metrics, started)`) and have both `extract_chat_lines_for_live` and `processing_worker` call it. Alternatively, if `extract_chat_lines_for_live` is genuinely dead, delete it and migrate its tests to exercise `processing_worker` via a synthetic frame queue.
 
 **Test surface:** `tests/test_live_runtime.py` — existing tests for `extract_chat_lines_for_live` become the contract test for the new helper.
+
+---
+
+### T-34 · Verify GUI chat-color settings propagate to all detection paths
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/gui/settings_panel.py:131-137`, `src/ow_chat_logger/gui/config_io.py`, `src/ow_chat_logger/image_processing.py`
+- **Completed:** —
+
+The settings panel exposes `team_hsv_lower/upper` and `all_hsv_lower/upper` entries, but there is no automated coverage that proves a change written from the GUI actually reaches every downstream mask/detection call. If a future refactor introduces a second copy of the HSV range (e.g. cached at import time, read from a stale dict, or bypassed on a fallback path) the GUI edit will silently no-op and regressions will only surface in manual play-testing.
+
+**Fix direction:** (a) Audit every consumer of the four HSV keys and list them in the task body — team mask, all mask, any debug-mask rendering, and any live-runtime path that may hold a pre-resolved copy. (b) Add a regression test that mutates the four HSV keys in CONFIG to a synthetic non-default range, runs a frame through `extract_chat_debug_data` plus the live-runtime path, and asserts the produced masks reflect the new range (e.g. a pixel that is inside the new range but outside the default passes through). (c) If any consumer caches the range at import or profile-resolve time, either invalidate on config change or document the reload requirement and add a test that fails loudly if the cache is stale.
+
+**Test surface:** new `tests/test_color_config_propagation.py` — parametrize over the four HSV keys; existing `tests/test_gui_config_io.py` (if present) for the GUI → config round-trip.
+
+---
+
+### T-35 · Expose in-game chat color options as presets for team and all chat
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/gui/settings_panel.py:131-137`, `src/ow_chat_logger/gui/config_io.py`
+- **Completed:** —
+
+Overwatch ships a fixed palette of chat colors the user can pick in-game (team and all chat each have their own palette). Today the GUI forces the user to hand-tune raw HSV tuples, which is a poor UX and a frequent source of "detection stopped working" reports when the in-game color is changed. We should ship a preset per in-game color option so the user selects "Team: <color name>" / "All: <color name>" and the corresponding HSV range is applied.
+
+**Fix direction:** (a) Enumerate the full set of in-game chat color options for team chat and for all chat (source of truth: Overwatch settings UI — list each color name exactly as it appears in-game). (b) Derive an HSV lower/upper range per color from a reference screenshot (see T-36). (c) Store the presets in a single module (e.g. `src/ow_chat_logger/chat_color_presets.py`) keyed by channel + color name. (d) Add two `CTkOptionMenu`s to the settings panel ("Team chat color" / "All chat color") whose selection writes the four HSV keys. (e) Keep the raw HSV entries available under the existing Advanced pattern (see `feedback_settings_ux.md`) so power users can still override. (f) When the loaded config HSV ranges match a preset, reflect that preset name in the dropdown; otherwise show "Custom".
+
+**Test surface:** new `tests/test_chat_color_presets.py` — assert every preset has a valid H∈[0,179], S∈[0,255], V∈[0,255] range with lower < upper per channel; assert selecting a preset writes all four keys; assert loading a config whose values match a preset round-trips to that preset name.
+
+**Depends on:** T-36 (the preset HSV ranges must be derived from real screenshots, not guessed).
+
+---
+
+### T-36 · Capture regression screenshot fixtures for every chat-color preset
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `tests/fixtures/regression/`, `tests/test_regression_screenshots.py`
+- **Completed:** —
+
+For T-35 to be trustworthy we need one real screenshot per in-game chat color (team and all) so we can (a) derive each preset's HSV range from ground truth and (b) guard against a preset silently breaking on a future masking change. The current regression corpus covers only a handful of colors — most presets have zero coverage.
+
+**Fix direction:** (a) For each color in the in-game team-chat palette, capture a screenshot with at least one team-chat message visible and save as `tests/fixtures/regression/preset_team_<color>.png` plus a matching `.expected.json`. (b) Repeat for each all-chat color as `preset_all_<color>.png`. (c) Use short, unambiguous message content (no special OCR hazards — avoid `l`/`I` ambiguity, no hero-name parsing edge cases) so a failure clearly indicates a color/masking problem rather than a parser bug. (d) Extend the regression runner (or add a parametrized sibling test) that, given the preset registry from T-35, asserts each `preset_*_<color>.png` produces the expected lines using that preset's HSV range. (e) Document the capture procedure in `tests/fixtures/regression/README.md` so future in-game palette additions can be covered by the same process.
+
+**Test surface:** `tests/test_regression_screenshots.py` (or a new `tests/test_chat_color_preset_screenshots.py` if parametrization gets awkward).
+
+**Depends on:** blocks T-35 completion — presets should not merge without corresponding fixtures.
 
 ---
 
