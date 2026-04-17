@@ -14,7 +14,6 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 
 | ID | Title | Severity | State | Completed |
 |----|-------|----------|-------|-----------|
-| T-08 | Shutdown race on buffer flush | structural | 🔴 `open` | — |
 | T-10 | Dead commented-out code | smell | 🔴 `open` | — |
 | T-11 | CLI `--metrics` asymmetric flag | smell | 🔴 `open` | — |
 | T-12 | `ResolvedOCRProfile` mutable dict fields in frozen dataclass | structural | 🔴 `open` | — |
@@ -35,6 +34,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-04 | `LazyConfig` write not thread-safe | structural | 🟢 `done` | 2026-04-03 |
 | T-05 | `OCREngine` dead threshold attributes | structural | 🟢 `done` | 2026-04-03 |
 | T-06 | Redundant crop on every live frame | structural | 🟢 `done` | 2026-04-06 |
+| T-08 | Shutdown race on buffer flush | structural | 🟢 `done` | 2026-04-17 |
 | T-09 | `OCREngine` has no swappable interface | structural | 🟢 `done` | 2026-04-03 |
 | T-15 | Trailing `l:` in player prefix should normalize to closing bracket | bug | 🟢 `done` | 2026-04-03 |
 | T-16 | Capital `I` closing-bracket OCR suffix not covered by T-15 | bug | 🟢 `done` | 2026-04-03 |
@@ -56,20 +56,6 @@ Detailed entries for completed tasks are not repeated below; see git history (co
 ---
 
 ## Structural Issues
-
-### T-08 · Shutdown race: buffer flush after non-guaranteed thread join
-- **Severity:** structural
-- **State:** 🔴 `open`
-- **File:** `src/ow_chat_logger/live_runtime.py:416-426`
-- **Completed:** —
-
-After `processing_thread.join(timeout=1.0)`, `flush_buffers` runs immediately on the main thread. If the processing worker did not exit within 1s, both threads can access `team_buffer` / `all_buffer` concurrently. `MessageBuffer` has no locking.
-
-**Fix direction:** After `stop_event.set()`, join the processing thread without a timeout (the worker will exit once `stop_event` is set and the queue drains), or check `processing_thread.is_alive()` before calling `flush_buffers` and log a warning if it's still running.
-
-**Test surface:** `tests/test_live_runtime.py` — validate that the processing thread has exited before flush is called.
-
----
 
 ### T-12 · `ResolvedOCRProfile` is frozen but contains mutable dicts
 - **Severity:** structural
