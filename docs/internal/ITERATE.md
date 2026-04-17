@@ -2,9 +2,15 @@
 
 Internal working process for backlog iterations.
 
-> **Before anything else pull the latest changes: `git pull --rebase origin master`**
+> **Before anything else: switch to `master`, pull the latest changes, and create a fresh task branch.**
+> ```bash
+> git checkout master
+> git pull --rebase origin master
+> git checkout -b <type>/<task-id>-<short-slug>   # e.g. fix/t-14-ocr-engine-monkey-patch
+> ```
 > Do not read the task list, do not select a task, until this has run.
 > If conflicts happen, stop and notify about it.
+> The branch name is finalized once the task is picked; if the proposed task is rejected, rename the branch (`git branch -m`) before starting the next candidate.
 
 This document defines how each task in `TASKS.md` is approached, reviewed, and closed. The goal is to keep changes small, verifiable, and human-confirmed before moving on.
 
@@ -31,10 +37,12 @@ open  -->  in-progress  -->  review  -->  done
 
 ### 1. Select
 
-Pull the latest changes from the remote before selecting a task:
+Ensure you are on a fresh branch off the latest `master` before selecting a task:
 
 ```bash
+git checkout master
 git pull --rebase origin master
+git checkout -b <type>/<task-id>-<short-slug>
 ```
 
 Pick the next task from `TASKS.md`. Priority order by default:

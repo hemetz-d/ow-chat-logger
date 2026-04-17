@@ -87,7 +87,7 @@ def test_await_async_operation_supports_get():
 
 def test_ocr_engine_falls_back_to_english(monkeypatch):
     monkeypatch.setattr(
-        "ow_chat_logger.ocr_engine._import_winrt_modules",
+        "ow_chat_logger.ocr.windows._import_winrt_modules",
         lambda: {
             "Language": FakeLanguage,
             "BitmapPixelFormat": SimpleNamespace(BGRA8="bgra8"),
@@ -104,7 +104,7 @@ def test_ocr_engine_falls_back_to_english(monkeypatch):
 
 def test_ocr_engine_run_returns_word_boxes(monkeypatch):
     monkeypatch.setattr(
-        "ow_chat_logger.ocr_engine._import_winrt_modules",
+        "ow_chat_logger.ocr.windows._import_winrt_modules",
         lambda: {
             "Language": FakeLanguage,
             "BitmapPixelFormat": SimpleNamespace(BGRA8="bgra8"),
@@ -130,7 +130,7 @@ def test_ocr_engine_run_returns_word_boxes(monkeypatch):
 
 def test_ocr_engine_requires_2d_mask(monkeypatch):
     monkeypatch.setattr(
-        "ow_chat_logger.ocr_engine._import_winrt_modules",
+        "ow_chat_logger.ocr.windows._import_winrt_modules",
         lambda: {
             "Language": FakeLanguage,
             "BitmapPixelFormat": SimpleNamespace(BGRA8="bgra8"),

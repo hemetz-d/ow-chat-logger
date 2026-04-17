@@ -16,7 +16,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 |----|-------|----------|-------|-----------|
 | T-10 | Dead commented-out code | smell | 🔴 `open` | — |
 | T-11 | CLI `--metrics` asymmetric flag | smell | 🔴 `open` | — |
-| T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🔴 `open` | — |
+| T-37 | Move `debug_snaps/` and `analysis/` out of user `log_dir` | structural | 🔴 `open` | — |
 | T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🔴 `open` | — |
 | T-21 | `SYSTEM_PATTERNS` redundant `.*` prefixes | smell | 🔴 `open` | — |
 | T-22 | `_effective_scale_factor` computed twice per resize | smell | 🔴 `open` | — |
@@ -28,6 +28,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-34 | Verify GUI chat-color settings propagate to all detection paths | structural | 🔴 `open` | — |
 | T-35 | Expose in-game chat color options as presets for team/all chat | structural | 🔴 `open` | — |
 | T-36 | Capture regression screenshot fixtures for every chat-color preset | structural | 🔴 `open` | — |
+| T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🟢 `done` | 2026-04-17 |
 | T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | ⚫ `deferred` | — |
 | T-17 | T-15 false positive: legitimate names ending in `l` stripped when bracket is missing | bug | ⚫ `deferred` | — |
 | T-01 | Y-anchor drift in `reconstruct_lines` | bug | 🟢 `done` | 2026-04-03 |
@@ -60,20 +61,6 @@ Detailed entries for completed tasks are not repeated below; see git history (co
 ---
 
 ## Structural Issues
-
-### T-14 · `ocr_engine.py` legacy shim monkey-patches a module-level function in `__init__`
-- **Severity:** structural
-- **State:** 🔴 `open`
-- **File:** `src/ow_chat_logger/ocr_engine.py:20`
-- **Completed:** —
-
-`OCREngine.__init__` temporarily replaces `_windows._import_winrt_modules` with a local reference, calls `super().__init__()`, then restores the original. This pattern is not thread-safe: if two `OCREngine` instances are constructed concurrently, one thread's restore will overwrite the other's patch mid-construction. It appears to be a workaround for test isolation, but it pollutes production code with test machinery.
-
-**Fix direction:** Investigate why the patch is needed and address the root cause. If it's purely for test mocking, use `unittest.mock.patch` in tests rather than patching in the constructor. Remove the monkey-patch from production code.
-
-**Test surface:** `tests/test_ocr_engine.py` — verify the legacy `OCREngine` constructs correctly without the monkey-patch.
-
----
 
 ### T-20 · Save debug screenshot when a parsing anomaly is detected
 - **Severity:** structural
@@ -160,6 +147,20 @@ For T-35 to be trustworthy we need one real screenshot per in-game chat color (t
 **Test surface:** `tests/test_regression_screenshots.py` (or a new `tests/test_chat_color_preset_screenshots.py` if parametrization gets awkward).
 
 **Depends on:** blocks T-35 completion — presets should not merge without corresponding fixtures.
+
+---
+
+### T-37 · Move `debug_snaps/` and `analysis/` out of user `log_dir`
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/config.py:443,448`, `src/ow_chat_logger/analysis.py:76-78`
+- **Completed:** —
+
+`get_app_paths` currently sets `snap_dir = log_dir / "debug_snaps"` and unconditionally creates it at startup (`paths.snap_dir.mkdir(...)`). `default_analysis_output_dir()` likewise returns `log_dir / "analysis" / <timestamp>`. `log_dir` is the user-facing output directory — it holds `chat_log.csv` and `hero_log.csv`, which the user actively opens and browses. Mixing developer/debug artefacts (mask PNGs, per-step images, analysis report JSONs, on-the-fly debug snaps) into that same folder clutters the user's view and invites confusion about which files are "their data" vs. disposable diagnostics. Additionally, the `debug_snaps/` directory is created on every startup even in sessions where no snap is ever taken.
+
+**Fix direction:** (a) Route both trees under a developer-artefact root that is NOT `log_dir` — e.g. `appdata_dir/dev/debug_snaps/` and `appdata_dir/dev/analysis/<timestamp>/`, or an OS-appropriate cache dir. (b) Drop the unconditional `snap_dir.mkdir` from `get_app_paths` — create the directory lazily on first snap write instead. Analysis output dir is already lazy (`output_dir.mkdir` in `write_analysis_artifacts`), so just changing its default path is enough. (c) Audit every reference to `snap_dir` / `default_analysis_output_dir` and update accordingly. (d) Document the new location in any README/CLI help that currently points at `log_dir`.
+
+**Test surface:** `tests/test_config.py` (paths resolution), `tests/test_analysis.py` (default output dir), and any test that asserts `snap_dir` location.
 
 ---
 
