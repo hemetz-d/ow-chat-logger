@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-import colorsys
+import math
 import queue
+import time
 import tkinter as tk
 import tkinter.colorchooser as colorchooser
 
 import customtkinter as ctk
 
+from ow_chat_logger.gui import icons as I
 from ow_chat_logger.gui import theme as T
 from ow_chat_logger.gui.backend_bridge import BackendBridge, StatusEvent
+from ow_chat_logger.gui.color_utils import hex_to_hsv_bounds, hsv_bounds_to_hex
 from ow_chat_logger.gui.config_io import (
     load_ui_config,
     open_log_folder,
@@ -17,31 +20,10 @@ from ow_chat_logger.gui.config_io import (
 from ow_chat_logger.gui.feed_panel import FeedPanel
 from ow_chat_logger.gui.settings_panel import SettingsPanel
 
-# ── Color helpers (OpenCV HSV: H∈[0,180], S∈[0,255], V∈[0,255]) ─────────────
-
-def _hsv_bounds_to_hex(lower: list[int], upper: list[int]) -> str:
-    h = ((lower[0] + upper[0]) / 2) / 180.0
-    s = ((lower[1] + upper[1]) / 2) / 255.0
-    v = upper[2] / 255.0
-    r, g, b = colorsys.hsv_to_rgb(h, s, v)
-    return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
-
-
-def _hex_to_hsv_bounds(hex_color: str, hue_tol: int = 14) -> tuple[list[int], list[int]]:
-    hx = hex_color.lstrip("#")
-    r, g, b = (int(hx[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
-    h, s, v = colorsys.rgb_to_hsv(r, g, b)
-    h_ocv = int(h * 180)
-    s_ocv = int(s * 255)
-    lower = [max(0, h_ocv - hue_tol), max(0, s_ocv - 80), 50]
-    upper = [min(180, h_ocv + hue_tol), 255, 255]
-    return lower, upper
-
-
 # ── Appearance mode cycling ──────────────────────────────────────────────────
 
 _MODE_ORDER = ("system", "light", "dark")
-_MODE_ICON = {"system": "◐", "light": "☀", "dark": "☾"}
+_MODE_ICON_NAME = {"system": "auto", "light": "sun", "dark": "moon"}
 _MODE_LABEL = {"system": "Auto", "light": "Light", "dark": "Dark"}
 
 
@@ -70,6 +52,11 @@ class OWChatLoggerApp(ctk.CTk):
         self._settings_window: ctk.CTkToplevel | None = None
         self._swatches: dict[str, ctk.CTkButton] = {}
         self._mode_btn: ctk.CTkButton | None = None
+        self._status_kind: str = "idle"
+        self._pulse_job: str | None = None
+        self._stats_job: str | None = None
+        self._session_start: float | None = None
+        self._message_count: int = 0
         self._build_ui()
         T.apply_chrome(self)
         icon = T.make_app_icon_photo()
@@ -127,13 +114,41 @@ class OWChatLoggerApp(ctk.CTk):
         )
         self._status_label.pack(side="left", padx=(0, 14), pady=5)
 
+        # Session stats chip — hidden until the logger starts
+        self._stats_chip = ctk.CTkFrame(
+            left,
+            fg_color=T.ACCENT_SUBTLE,
+            corner_radius=T.R_PILL,
+        )
+        self._stats_label = ctk.CTkLabel(
+            self._stats_chip,
+            text="",
+            text_color=T.ACCENT,
+            font=T.font_caption(),
+        )
+        self._stats_label.pack(side="left", padx=12, pady=5)
+
         # Right group: pill-style action buttons (grid-pinned so they never clip)
         right = ctk.CTkFrame(toolbar, fg_color="transparent")
         right.grid(row=0, column=2, sticky="e", padx=(0, 18), pady=13)
 
+        # Start button with a fake-glow frame behind it when idle
+        start_wrap = ctk.CTkFrame(right, fg_color="transparent")
+        start_wrap.pack(side="left", padx=(0, 6))
+        self._start_glow = ctk.CTkFrame(
+            start_wrap,
+            width=80,
+            height=36,
+            corner_radius=18,
+            fg_color=T.ACCENT_SUBTLE,
+            border_width=0,
+        )
+        self._start_glow.place(relx=0.5, rely=0.5, anchor="center")
         self._start_btn = ctk.CTkButton(
-            right,
+            start_wrap,
             text="Start",
+            image=I.icon("play", 12, color=T.ACCENT_FG),
+            compound="left",
             width=72,
             height=28,
             corner_radius=14,
@@ -143,11 +158,13 @@ class OWChatLoggerApp(ctk.CTk):
             text_color=T.ACCENT_FG,
             command=self._on_start,
         )
-        self._start_btn.pack(side="left", padx=(0, 6))
+        self._start_btn.pack(padx=4, pady=4)
 
         self._stop_btn = ctk.CTkButton(
             right,
             text="Stop",
+            image=I.icon("stop", 12, color=T.DANGER),
+            compound="left",
             width=72,
             height=28,
             corner_radius=14,
@@ -208,7 +225,7 @@ class OWChatLoggerApp(ctk.CTk):
             ).pack(side="left", padx=(0, 6))
 
             try:
-                hex_color = _hsv_bounds_to_hex(
+                hex_color = hsv_bounds_to_hex(
                     cfg[f"{chat_key}_hsv_lower"], cfg[f"{chat_key}_hsv_upper"]
                 )
             except Exception:
@@ -249,8 +266,10 @@ class OWChatLoggerApp(ctk.CTk):
 
         self._mode_btn = ctk.CTkButton(
             right,
-            text=self._mode_button_text(),
-            width=84,
+            text=_MODE_LABEL[self._appearance_mode],
+            image=I.icon(_MODE_ICON_NAME[self._appearance_mode], 14),
+            compound="left",
+            width=92,
             height=30,
             corner_radius=T.R_BUTTON,
             fg_color="transparent",
@@ -265,7 +284,8 @@ class OWChatLoggerApp(ctk.CTk):
 
         ctk.CTkButton(
             right,
-            text="⚙",
+            text="",
+            image=I.icon("gear", 18),
             width=32,
             height=30,
             corner_radius=T.R_BUTTON,
@@ -274,7 +294,6 @@ class OWChatLoggerApp(ctk.CTk):
             border_color=T.BORDER_HAIRLINE,
             hover_color=T.BG_ELEV,
             text_color=T.TEXT_PRIMARY,
-            font=ctk.CTkFont(size=15),
             command=self._open_settings_modal,
         ).pack(side="left")
 
@@ -292,7 +311,7 @@ class OWChatLoggerApp(ctk.CTk):
         if not (result and result[1]):
             return
         hex_color: str = result[1]
-        lower, upper = _hex_to_hsv_bounds(hex_color)
+        lower, upper = hex_to_hsv_bounds(hex_color)
         save_ui_config({
             f"{chat_key}_hsv_lower": lower,
             f"{chat_key}_hsv_upper": upper,
@@ -300,13 +319,14 @@ class OWChatLoggerApp(ctk.CTk):
         from ow_chat_logger.config import reset_config
         reset_config()
         self._swatches[chat_key].configure(fg_color=hex_color, hover_color=hex_color)
+        self._feed_panel.refresh_chat_colors()
 
     def _refresh_swatches(self) -> None:
         """Recompute swatch colors from saved config (called after settings modal save)."""
         cfg = load_ui_config()
         for chat_key in ("team", "all"):
             try:
-                hex_color = _hsv_bounds_to_hex(
+                hex_color = hsv_bounds_to_hex(
                     cfg[f"{chat_key}_hsv_lower"], cfg[f"{chat_key}_hsv_upper"]
                 )
                 self._swatches[chat_key].configure(
@@ -314,13 +334,9 @@ class OWChatLoggerApp(ctk.CTk):
                 )
             except Exception:
                 pass
+        self._feed_panel.refresh_chat_colors()
 
     # ── Appearance mode ───────────────────────────────────────────────────────
-
-    def _mode_button_text(self) -> str:
-        icon = _MODE_ICON[self._appearance_mode]
-        label = _MODE_LABEL[self._appearance_mode]
-        return f"{icon}  {label}"
 
     def _cycle_appearance_mode(self) -> None:
         idx = _MODE_ORDER.index(self._appearance_mode)
@@ -328,7 +344,10 @@ class OWChatLoggerApp(ctk.CTk):
         _apply_appearance(self._appearance_mode)
         save_ui_config({"ui_appearance_mode": self._appearance_mode})
         if self._mode_btn is not None:
-            self._mode_btn.configure(text=self._mode_button_text())
+            self._mode_btn.configure(
+                text=_MODE_LABEL[self._appearance_mode],
+                image=I.icon(_MODE_ICON_NAME[self._appearance_mode], 14),
+            )
         # Re-apply Mica + retint titlebar to new mode
         T.apply_chrome(self)
         if self._settings_window is not None and self._settings_window.winfo_exists():
@@ -386,6 +405,8 @@ class OWChatLoggerApp(ctk.CTk):
 
     def _on_close(self) -> None:
         self._polling = False
+        self._stop_pulse()
+        self._stop_stats_timer()
         self.withdraw()
         self._bridge.stop()
         self.after(600, self.destroy)
@@ -402,7 +423,9 @@ class OWChatLoggerApp(ctk.CTk):
 
         try:
             while True:
-                self._feed_panel.append_message(self._bridge.message_queue.get_nowait())
+                entry = self._bridge.message_queue.get_nowait()
+                self._feed_panel.append_message(entry)
+                self._message_count += 1
         except queue.Empty:
             pass
 
@@ -425,14 +448,22 @@ class OWChatLoggerApp(ctk.CTk):
             self._set_status("running", "Running")
             self._start_btn.configure(state="disabled")
             self._stop_btn.configure(state="normal")
+            self._session_start = time.monotonic()
+            self._message_count = 0
+            self._show_stats_chip()
+            self._start_stats_timer()
         elif event.kind == "stopped":
             self._set_status("idle", "Idle")
             self._start_btn.configure(state="normal")
             self._stop_btn.configure(state="disabled")
+            self._stop_stats_timer()
+            self._hide_stats_chip()
         elif event.kind == "error":
             self._set_status("error", "Error")
             self._start_btn.configure(state="normal")
             self._stop_btn.configure(state="disabled")
+            self._stop_stats_timer()
+            self._hide_stats_chip()
 
     def _set_status(self, kind: str, text: str) -> None:
         color_map = {
@@ -443,9 +474,91 @@ class OWChatLoggerApp(ctk.CTk):
             "idle": T.IDLE,
         }
         color = color_map.get(kind, T.TEXT_MUTED)
+        self._status_kind = kind
         self._status_dot.configure(text_color=color)
         label_color = T.TEXT_SECONDARY if kind == "idle" else color
         self._status_label.configure(text=text, text_color=label_color)
+
+        # Start-button glow only when idle (CTA mode)
+        if hasattr(self, "_start_glow"):
+            if kind == "idle":
+                self._start_glow.place(relx=0.5, rely=0.5, anchor="center")
+            else:
+                self._start_glow.place_forget()
+
+        # Pulse the dot only while running
+        if kind == "running":
+            self._start_pulse()
+        else:
+            self._stop_pulse()
+
+    # ── Pulse animation ───────────────────────────────────────────────────────
+
+    def _start_pulse(self) -> None:
+        self._stop_pulse()
+        self._pulse_step(0)
+
+    def _stop_pulse(self) -> None:
+        if self._pulse_job is not None:
+            try:
+                self.after_cancel(self._pulse_job)
+            except Exception:
+                pass
+            self._pulse_job = None
+        if self._status_kind == "running":
+            self._status_dot.configure(text_color=T.SUCCESS)
+
+    def _pulse_step(self, tick: int) -> None:
+        # ~1.2s period at 80ms ticks → 15 steps per cycle
+        phase = (math.sin(tick * 2 * math.pi / 15) + 1) / 2  # 0..1
+        # Interpolate between SUCCESS and a dimmed variant
+        def _dim(hex_color: str, amount: float) -> str:
+            h = hex_color.lstrip("#")
+            r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+            r = int(r * (1 - amount) + 255 * amount * 0.25)
+            g = int(g * (1 - amount) + 255 * amount * 0.25)
+            b = int(b * (1 - amount) + 255 * amount * 0.25)
+            return f"#{r:02x}{g:02x}{b:02x}"
+        dim_amount = 0.45 * (1 - phase)
+        color = (
+            _dim(T.SUCCESS[0], dim_amount),
+            _dim(T.SUCCESS[1], dim_amount),
+        )
+        self._status_dot.configure(text_color=color)
+        self._pulse_job = self.after(80, self._pulse_step, tick + 1)
+
+    # ── Session stats chip ────────────────────────────────────────────────────
+
+    def _show_stats_chip(self) -> None:
+        self._stats_chip.pack(side="left", padx=(8, 0))
+
+    def _hide_stats_chip(self) -> None:
+        self._stats_chip.pack_forget()
+
+    def _start_stats_timer(self) -> None:
+        self._stop_stats_timer()
+        self._stats_tick()
+
+    def _stop_stats_timer(self) -> None:
+        if self._stats_job is not None:
+            try:
+                self.after_cancel(self._stats_job)
+            except Exception:
+                pass
+            self._stats_job = None
+
+    def _stats_tick(self) -> None:
+        if self._session_start is None:
+            return
+        elapsed = int(time.monotonic() - self._session_start)
+        mm, ss = divmod(elapsed, 60)
+        hh, mm = divmod(mm, 60)
+        clock = f"{hh:d}:{mm:02d}:{ss:02d}" if hh else f"{mm:02d}:{ss:02d}"
+        plural = "s" if self._message_count != 1 else ""
+        self._stats_label.configure(
+            text=f"{clock} · {self._message_count} msg{plural}"
+        )
+        self._stats_job = self.after(1000, self._stats_tick)
 
 
 def run_gui() -> int:

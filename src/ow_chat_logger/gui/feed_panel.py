@@ -1,14 +1,161 @@
 from __future__ import annotations
 
 import tkinter as tk
+from datetime import datetime
 
 import customtkinter as ctk
 
+from ow_chat_logger.gui import icons as I
 from ow_chat_logger.gui import theme as T
 from ow_chat_logger.gui.backend_bridge import FeedEntry
+from ow_chat_logger.gui.color_utils import hsv_bounds_to_hex
+from ow_chat_logger.gui.config_io import load_ui_config
 
-_MAX_LINES = 2000
+_MAX_ROWS = 500
+_DATE_GAP_SECONDS = 120
 
+
+# ── Message row widget ────────────────────────────────────────────────────────
+
+class MessageRow(ctk.CTkFrame):
+    """Compact chat row: channel dot, player, message (wraps), timestamp."""
+
+    def __init__(
+        self,
+        parent: tk.Widget,
+        entry: FeedEntry,
+        dot_color: str | None,
+    ) -> None:
+        super().__init__(
+            parent,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        self._entry = entry
+        self._build(dot_color)
+        self.bind("<Configure>", self._on_row_configure)
+        self.bind("<Enter>", lambda _e: self._set_hover(True))
+        self.bind("<Leave>", lambda _e: self._set_hover(False))
+
+    def _build(self, dot_color: str | None) -> None:
+        self.grid_columnconfigure(1, weight=1)
+
+        # Leading channel dot — tracks the user's chosen team/all chat color.
+        self._dot = ctk.CTkLabel(
+            self,
+            text="●",
+            text_color=dot_color if dot_color else T.pick(T.TEXT_DIM),
+            font=ctk.CTkFont(size=10),
+        )
+        self._dot.grid(row=0, column=0, padx=(20, 8), pady=1, sticky="w")
+
+        content = ctk.CTkFrame(self, fg_color="transparent")
+        content.grid(row=0, column=1, sticky="ew", pady=1)
+
+        ctk.CTkLabel(
+            content,
+            text=self._entry.player or "—",
+            text_color=T.TEXT_PRIMARY,
+            font=T.font_button(),
+            anchor="w",
+        ).pack(side="left")
+
+        body = ctk.CTkLabel(
+            content,
+            text=self._entry.text,
+            text_color=T.TEXT_SECONDARY,
+            font=T.font_body(),
+            anchor="w",
+            justify="left",
+            wraplength=600,
+        )
+        body.pack(side="left", padx=(10, 0), fill="x", expand=True)
+        self._body = body
+
+        ts = self._entry.timestamp.split(" ")[-1] if self._entry.timestamp else ""
+        ctk.CTkLabel(
+            self,
+            text=ts,
+            text_color=T.TEXT_MUTED,
+            font=T.font_caption(),
+            anchor="e",
+        ).grid(row=0, column=2, sticky="ne", padx=(10, 14), pady=3)
+
+    def set_dot_color(self, color: str | None) -> None:
+        self._dot.configure(
+            text_color=color if color else T.pick(T.TEXT_DIM)
+        )
+
+    @property
+    def chat_type(self) -> str:
+        return (self._entry.chat_type or "").lower()
+
+    def _on_row_configure(self, event: tk.Event) -> None:
+        # Row width − dot column (~36) − player estimate (~120) − ts (~70)
+        available = event.width - 36 - 120 - 70
+        if available > 80:
+            self._body.configure(wraplength=available)
+
+    def _set_hover(self, on: bool) -> None:
+        self.configure(fg_color=T.ACCENT_SUBTLE if on else "transparent")
+
+
+# ── Hero event row — stands out from real chat ────────────────────────────────
+
+class HeroRow(ctk.CTkFrame):
+    """Hero-pick log event — deliberately not styled like chat."""
+
+    def __init__(self, parent: tk.Widget, entry: FeedEntry) -> None:
+        super().__init__(parent, fg_color="transparent", corner_radius=0)
+        self._build(entry)
+
+    def _build(self, entry: FeedEntry) -> None:
+        self.grid_columnconfigure(1, weight=1)
+
+        # Small leading marker so it reads as a log line, not a chat message
+        ctk.CTkLabel(
+            self,
+            text="•",
+            text_color=T.CHAT_HERO,
+            font=T.font_body(),
+        ).grid(row=0, column=0, padx=(28, 0), pady=3, sticky="w")
+
+        player = entry.player or "—"
+        hero = entry.text or "—"
+        text = f"{player}  →  {hero}"
+        ctk.CTkLabel(
+            self,
+            text=text,
+            text_color=T.TEXT_MUTED,
+            font=ctk.CTkFont(family=T.ui_family(), size=12, slant="italic"),
+            anchor="w",
+        ).grid(row=0, column=1, padx=(8, 0), pady=3, sticky="w")
+
+        ts = entry.timestamp.split(" ")[-1] if entry.timestamp else ""
+        ctk.CTkLabel(
+            self,
+            text=ts,
+            text_color=T.TEXT_DIM,
+            font=T.font_caption(),
+            anchor="e",
+        ).grid(row=0, column=2, padx=(10, 14), pady=3, sticky="e")
+
+
+def _load_chat_colors() -> dict[str, str]:
+    """Resolve the user's picked team/all colors (hex) from saved config."""
+    cfg = load_ui_config()
+    out: dict[str, str] = {}
+    for key in ("team", "all"):
+        try:
+            out[key] = hsv_bounds_to_hex(
+                cfg[f"{key}_hsv_lower"], cfg[f"{key}_hsv_upper"]
+            )
+        except Exception:
+            out[key] = T.pick(T.CHAT_TEAM if key == "team" else T.CHAT_ALL)
+    return out
+
+
+# ── Feed panel ────────────────────────────────────────────────────────────────
 
 class FeedPanel(ctk.CTkFrame):
     def __init__(self, parent: tk.Widget) -> None:
@@ -19,8 +166,27 @@ class FeedPanel(ctk.CTkFrame):
             border_width=0,
         )
         self._count = 0
+        self._rows: list[tk.Widget] = []
+        self._last_ts: datetime | None = None
         self._auto_scroll = tk.BooleanVar(value=True)
+        self._empty_frame: ctk.CTkFrame | None = None
+        self._jump_pill: ctk.CTkButton | None = None
+        self._chat_colors: dict[str, str] = _load_chat_colors()
         self._build()
+        self._show_empty_state()
+
+    def refresh_chat_colors(self) -> None:
+        """Re-read the user's team/all colors and update existing dots."""
+        self._chat_colors = _load_chat_colors()
+        for row in self._rows:
+            if isinstance(row, MessageRow):
+                row.set_dot_color(self._chat_colors.get(row.chat_type))
+
+    def _dot_color_for(self, entry: FeedEntry) -> str | None:
+        ct = (entry.chat_type or "").lower()
+        return self._chat_colors.get(ct)
+
+    # ── Layout ────────────────────────────────────────────────────────────────
 
     def _build(self) -> None:
         header = ctk.CTkFrame(self, fg_color="transparent")
@@ -31,57 +197,56 @@ class FeedPanel(ctk.CTkFrame):
             font=T.font_title(),
             text_color=T.TEXT_PRIMARY,
         ).pack(side="left")
-        self._count_label = ctk.CTkLabel(
+
+        self._count_pill = ctk.CTkLabel(
             header,
-            text="0 messages",
-            text_color=T.TEXT_MUTED,
-            font=T.font_caption(),
+            text="0",
+            text_color=T.ACCENT,
+            fg_color=T.ACCENT_SUBTLE,
+            font=T.font_badge(),
+            corner_radius=T.R_BADGE,
+            padx=8,
+            pady=2,
         )
-        self._count_label.pack(side="right")
+        self._count_pill.pack(side="right")
 
         # Hairline divider under header
         ctk.CTkFrame(self, height=1, fg_color=T.BORDER_FAINT, corner_radius=0).pack(
             fill="x", padx=0
         )
 
-        text_frame = tk.Frame(self, bg=T.pick(T.BG_CARD), highlightthickness=0, bd=0)
-        text_frame.pack(fill="both", expand=True, padx=8, pady=(8, 0))
-        self._text_frame = text_frame
+        # Body container holds scrollable list + overlays (empty state, pill)
+        body = ctk.CTkFrame(self, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=0, pady=(0, 0))
+        self._body = body
 
-        scrollbar = ctk.CTkScrollbar(
-            text_frame,
-            button_color=T.BORDER_HOVER,
-            button_hover_color=T.TEXT_MUTED,
-            fg_color="transparent",
-            width=10,
-            corner_radius=5,
+        self._list = ctk.CTkScrollableFrame(
+            body,
+            fg_color=T.BG_CARD,
+            corner_radius=0,
+            scrollbar_button_color=T.BORDER_HOVER,
+            scrollbar_button_hover_color=T.TEXT_MUTED,
         )
-        scrollbar.pack(side="right", fill="y", padx=(0, 2))
+        self._list.pack(fill="both", expand=True, padx=0, pady=0)
 
-        self._text = tk.Text(
-            text_frame,
-            yscrollcommand=scrollbar.set,
-            bg=T.pick(T.BG_CARD),
-            fg=T.pick(T.TEXT_PRIMARY),
-            font=T.font_mono(),
-            wrap="word",
-            state="disabled",
-            relief="flat",
-            borderwidth=0,
-            highlightthickness=0,
-            selectbackground=T.pick(T.BG_SELECT),
-            selectforeground=T.pick(T.TEXT_PRIMARY),
-            insertbackground=T.pick(T.TEXT_PRIMARY),
-            padx=12,
-            pady=6,
-            spacing1=1,
-            spacing3=1,
+        # Jump-to-latest floating pill (hidden initially)
+        self._jump_pill = ctk.CTkButton(
+            body,
+            text="New messages",
+            image=I.icon("jump_down", 14, color=T.ACCENT_FG),
+            compound="left",
+            width=130,
+            height=28,
+            corner_radius=14,
+            fg_color=T.ACCENT,
+            hover_color=T.ACCENT_HOVER,
+            text_color=T.ACCENT_FG,
+            font=T.font_small(),
+            command=self._on_jump_click,
         )
-        self._text.pack(side="left", fill="both", expand=True)
-        scrollbar.configure(command=self._text.yview)
+        # Not placed yet — _maybe_show_jump_pill handles visibility
 
-        self._refresh_text_tags()
-
+        # Footer: auto-scroll checkbox
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(fill="x", padx=18, pady=(6, 12))
         ctk.CTkCheckBox(
@@ -99,71 +264,201 @@ class FeedPanel(ctk.CTkFrame):
             text_color=T.TEXT_SECONDARY,
         ).pack(side="left")
 
-    # ── Appearance-mode sync for tk.Text (not CTk-native) ─────────────────────
+        # Periodically poll scroll position for jump-pill visibility
+        self.after(400, self._poll_scroll)
+
+    # ── Empty state ───────────────────────────────────────────────────────────
+
+    def _show_empty_state(self) -> None:
+        if self._empty_frame is not None:
+            return
+        frame = ctk.CTkFrame(self._list, fg_color="transparent")
+        frame.pack(fill="both", expand=True, padx=20, pady=60)
+
+        bubble = ctk.CTkLabel(
+            frame,
+            text="",
+            image=I.icon("message_square", 48, color=T.TEXT_DIM),
+        )
+        bubble.pack(pady=(20, 12))
+        ctk.CTkLabel(
+            frame,
+            text="Waiting for chat…",
+            font=T.font_button(),
+            text_color=T.TEXT_SECONDARY,
+        ).pack()
+        ctk.CTkLabel(
+            frame,
+            text="Press Start to begin capturing.",
+            font=T.font_small(),
+            text_color=T.TEXT_MUTED,
+        ).pack(pady=(4, 0))
+        self._empty_frame = frame
+
+    def _hide_empty_state(self) -> None:
+        if self._empty_frame is not None:
+            self._empty_frame.destroy()
+            self._empty_frame = None
+
+    # ── Appearance-mode sync ──────────────────────────────────────────────────
 
     def _set_appearance_mode(self, mode_string: str) -> None:
         super()._set_appearance_mode(mode_string)
-        self._sync_native_colors()
-
-    def _sync_native_colors(self) -> None:
-        if not hasattr(self, "_text"):
-            return
-        card_bg = T.pick(T.BG_CARD)
-        try:
-            self._text_frame.configure(bg=card_bg)
-        except Exception:
-            pass
-        self._text.configure(
-            bg=card_bg,
-            fg=T.pick(T.TEXT_PRIMARY),
-            selectbackground=T.pick(T.BG_SELECT),
-            selectforeground=T.pick(T.TEXT_PRIMARY),
-            insertbackground=T.pick(T.TEXT_PRIMARY),
-        )
-        self._refresh_text_tags()
-
-    def _refresh_text_tags(self) -> None:
-        self._text.tag_config("team", foreground=T.pick(T.CHAT_TEAM))
-        self._text.tag_config("all", foreground=T.pick(T.CHAT_ALL))
-        self._text.tag_config("hero", foreground=T.pick(T.CHAT_HERO))
-        self._text.tag_config("ts", foreground=T.pick(T.CHAT_TS))
+        # Children with tuple colors auto-update; nothing else to do here.
 
     # ── Message append / clear ────────────────────────────────────────────────
 
     def append_message(self, entry: FeedEntry) -> None:
+        self._hide_empty_state()
+
         self._count += 1
-        self._count_label.configure(
-            text=f"{self._count} message{'s' if self._count != 1 else ''}"
+        self._count_pill.configure(text=str(self._count))
+
+        # Date separator when there's a gap
+        ts_dt = _parse_ts(entry.timestamp)
+        if self._should_insert_separator(ts_dt):
+            self._append_separator(ts_dt)
+        self._last_ts = ts_dt
+
+        # Hairline divider above this row (except for the first row)
+        if self._rows:
+            divider = ctk.CTkFrame(
+                self._list, height=1, fg_color=T.BORDER_FAINT, corner_radius=0
+            )
+            divider.pack(fill="x", padx=16)
+            self._rows.append(divider)
+
+        row: tk.Widget = (
+            HeroRow(self._list, entry)
+            if entry.category == "hero"
+            else MessageRow(self._list, entry, self._dot_color_for(entry))
         )
+        row.pack(fill="x")
+        self._rows.append(row)
 
-        ts = entry.timestamp.split(" ")[-1]  # keep only HH:MM:SS
+        # Trim oldest widgets if we exceed the cap
+        while len(self._rows) > _MAX_ROWS * 2:
+            old = self._rows.pop(0)
+            old.destroy()
 
-        if entry.category == "hero":
-            tag = "hero"
-            ts_prefix = f"{ts} "
-            body = f"{entry.player} / {entry.text}\n"
-        else:
-            ct = entry.chat_type.lower()
-            tag = ct if ct in ("team", "all") else "all"
-            ts_prefix = f"{ts} "
-            body = f"{entry.player}: {entry.text}\n"
-
-        self._text.configure(state="normal")
-        self._text.insert("end", ts_prefix, "ts")
-        self._text.insert("end", body, tag)
-
-        lines = int(self._text.index("end-1c").split(".")[0])
-        if lines > _MAX_LINES:
-            self._text.delete("1.0", f"{lines - _MAX_LINES}.0")
-
-        self._text.configure(state="disabled")
-
+        # Auto-scroll
         if self._auto_scroll.get():
-            self._text.see("end")
+            self.after_idle(self._scroll_to_bottom)
+        else:
+            self._maybe_show_jump_pill()
 
     def clear(self) -> None:
-        self._text.configure(state="normal")
-        self._text.delete("1.0", "end")
-        self._text.configure(state="disabled")
+        for w in self._rows:
+            w.destroy()
+        self._rows.clear()
         self._count = 0
-        self._count_label.configure(text="0 messages")
+        self._last_ts = None
+        self._count_pill.configure(text="0")
+        self._show_empty_state()
+        self._hide_jump_pill()
+
+    # ── Date separator ────────────────────────────────────────────────────────
+
+    def _should_insert_separator(self, ts: datetime | None) -> bool:
+        if ts is None:
+            return False
+        if self._last_ts is None:
+            return True
+        if ts.date() != self._last_ts.date():
+            return True
+        return (ts - self._last_ts).total_seconds() >= _DATE_GAP_SECONDS
+
+    def _append_separator(self, ts: datetime | None) -> None:
+        if ts is None:
+            return
+        label = _format_separator(ts)
+        sep = ctk.CTkFrame(self._list, fg_color="transparent")
+        sep.pack(fill="x", pady=(14, 6))
+        sep.grid_columnconfigure(0, weight=1)
+        sep.grid_columnconfigure(2, weight=1)
+        ctk.CTkFrame(sep, height=1, fg_color=T.BORDER_FAINT, corner_radius=0).grid(
+            row=0, column=0, sticky="ew", padx=(16, 10)
+        )
+        ctk.CTkLabel(
+            sep,
+            text=label,
+            text_color=T.TEXT_MUTED,
+            font=T.font_caption(),
+        ).grid(row=0, column=1)
+        ctk.CTkFrame(sep, height=1, fg_color=T.BORDER_FAINT, corner_radius=0).grid(
+            row=0, column=2, sticky="ew", padx=(10, 16)
+        )
+        self._rows.append(sep)
+
+    # ── Scroll / jump-to-latest ───────────────────────────────────────────────
+
+    def _scroll_to_bottom(self) -> None:
+        # Force pending geometry to settle so yview_moveto lands on the real
+        # scrollregion, not a stale one from before the row was packed.
+        try:
+            self._list.update_idletasks()
+        except tk.TclError:
+            return
+        canvas = getattr(self._list, "_parent_canvas", None)
+        if canvas is not None:
+            canvas.yview_moveto(1.0)
+        self._hide_jump_pill()
+
+    def _at_bottom(self) -> bool:
+        canvas = getattr(self._list, "_parent_canvas", None)
+        if canvas is None:
+            return True
+        top, bottom = canvas.yview()
+        return bottom >= 0.995 or top == 0.0 and bottom == 1.0
+
+    def _maybe_show_jump_pill(self) -> None:
+        if self._at_bottom():
+            self._hide_jump_pill()
+        else:
+            self._show_jump_pill()
+
+    def _show_jump_pill(self) -> None:
+        if self._jump_pill is None:
+            return
+        self._jump_pill.place(relx=1.0, rely=1.0, x=-18, y=-14, anchor="se")
+
+    def _hide_jump_pill(self) -> None:
+        if self._jump_pill is None:
+            return
+        self._jump_pill.place_forget()
+
+    def _on_jump_click(self) -> None:
+        self._auto_scroll.set(True)
+        self._scroll_to_bottom()
+
+    def _poll_scroll(self) -> None:
+        try:
+            if not self.winfo_exists():
+                return
+        except tk.TclError:
+            return
+        self._maybe_show_jump_pill()
+        self.after(400, self._poll_scroll)
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _parse_ts(text: str) -> datetime | None:
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%H:%M:%S"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _format_separator(ts: datetime) -> str:
+    today = datetime.now().date()
+    days = (today - ts.date()).days
+    if days == 0:
+        return f"Today · {ts.strftime('%H:%M')}"
+    if days == 1:
+        return f"Yesterday · {ts.strftime('%H:%M')}"
+    return ts.strftime("%a %b %d · %H:%M")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import tkinter.font as tkfont
 
 import customtkinter as ctk
@@ -29,6 +30,7 @@ TEXT_DIM = ("#aeaeb2", "#636366")
 ACCENT = ("#007AFF", "#0A84FF")
 ACCENT_HOVER = ("#0062cc", "#3395ff")
 ACCENT_FG = ("#ffffff", "#ffffff")
+ACCENT_SUBTLE = ("#e8f0fe", "#1e2a3f")  # tinted hover/fills, glows behind CTAs
 
 # Semantic (System colors)
 SUCCESS = ("#34C759", "#30D158")
@@ -43,12 +45,31 @@ CHAT_ALL = ("#B25000", "#FFD60A")
 CHAT_HERO = ("#248A3D", "#30D158")
 CHAT_TS = ("#86868b", "#8e8e93")
 
+# Channel-chip tinted backgrounds (18% alpha baked onto the card surface)
+CHAT_TEAM_CHIP = ("#dbeafe", "#0a2540")
+CHAT_ALL_CHIP = ("#fef3c7", "#3b2a06")
+CHAT_HERO_CHIP = ("#dcfce7", "#0a2e1a")
+
+# Avatar color pool — deterministic hash → hue. Muted so white initials read.
+AVATAR_BG_POOL = (
+    ("#4f46e5", "#6366f1"),  # indigo
+    ("#0891b2", "#06b6d4"),  # cyan
+    ("#059669", "#10b981"),  # emerald
+    ("#ca8a04", "#eab308"),  # amber
+    ("#dc2626", "#ef4444"),  # red
+    ("#c026d3", "#d946ef"),  # fuchsia
+    ("#7c3aed", "#8b5cf6"),  # violet
+    ("#ea580c", "#f97316"),  # orange
+)
+
 # Radii — generous, Apple-ish
-R_CARD = 14
+R_CARD = 16
 R_BUTTON = 10
 R_INPUT = 8
 R_SWATCH = 7
 R_PILL = 18
+R_CHIP = 12
+R_BADGE = 6
 
 # ── Font families ────────────────────────────────────────────────────────────
 _UI_FAMILY: str | None = None
@@ -98,6 +119,10 @@ def mono_family() -> str:
     return _MONO_FAMILY
 
 
+def font_display() -> ctk.CTkFont:
+    return ctk.CTkFont(family=ui_family(), size=22, weight="bold")
+
+
 def font_title() -> ctk.CTkFont:
     return ctk.CTkFont(family=ui_family(), size=17, weight="bold")
 
@@ -122,6 +147,10 @@ def font_caption() -> ctk.CTkFont:
     return ctk.CTkFont(family=ui_family(), size=11)
 
 
+def font_badge() -> ctk.CTkFont:
+    return ctk.CTkFont(family=ui_family(), size=10, weight="bold")
+
+
 def font_mono() -> tuple[str, int]:
     return (mono_family(), 11)
 
@@ -136,6 +165,14 @@ def pick(color) -> str:
     if isinstance(color, tuple):
         return color[1] if is_dark() else color[0]
     return color
+
+
+def avatar_color_for(name: str) -> tuple[str, str]:
+    """Deterministic (light, dark) avatar background for a player name."""
+    if not name:
+        return AVATAR_BG_POOL[0]
+    digest = hashlib.md5(name.lower().encode("utf-8")).digest()
+    return AVATAR_BG_POOL[digest[0] % len(AVATAR_BG_POOL)]
 
 
 # ── Win11 backdrop + titlebar ────────────────────────────────────────────────
@@ -162,19 +199,48 @@ def apply_chrome(window) -> None:
 
 # ── App icon (generated at runtime with PIL) ─────────────────────────────────
 def make_app_icon_photo():
-    """Generate the app icon as a tk PhotoImage. Returns None on PIL failure."""
+    """Generate the app icon as a tk PhotoImage. Returns None on PIL failure.
+
+    Design: vertical gradient rounded square (deep blue → system blue) with a
+    stroke-matched white speech bubble. Consistent with the icons.py stroke set.
+    """
     try:
         from PIL import Image, ImageDraw, ImageTk
     except Exception:
         return None
 
     size = 64
+
+    # Vertical gradient fill for the rounded square
+    grad = Image.new("RGB", (1, size), "#0A84FF")
+    gpx = grad.load()
+    top = (0x00, 0x5A, 0xD4)   # deeper blue
+    bot = (0x3A, 0x9C, 0xFF)   # lighter blue
+    for y in range(size):
+        t = y / (size - 1)
+        gpx[0, y] = (
+            int(top[0] + (bot[0] - top[0]) * t),
+            int(top[1] + (bot[1] - top[1]) * t),
+            int(top[2] + (bot[2] - top[2]) * t),
+        )
+    grad = grad.resize((size, size))
+
+    # Round-rect mask
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (0, 0, size - 1, size - 1), radius=15, fill=255
+    )
+
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    img.paste(grad, (0, 0), mask)
+
+    # Speech bubble — rounded rect + tail (stroke-matched to icons.py)
     draw = ImageDraw.Draw(img)
-    # Rounded square, Apple system blue
-    draw.rounded_rectangle((0, 0, size - 1, size - 1), radius=14, fill="#007AFF")
-    # White speech bubble body
-    draw.rounded_rectangle((14, 18, 50, 42), radius=8, fill="white")
-    # Bubble tail
-    draw.polygon([(22, 42), (30, 42), (22, 50)], fill="white")
+    draw.rounded_rectangle((14, 17, 50, 42), radius=9, fill=(255, 255, 255, 240))
+    draw.polygon([(22, 42), (32, 42), (23, 52)], fill=(255, 255, 255, 240))
+    # Three chat lines inside the bubble, subtle
+    line_color = (10, 132, 255, 180)
+    for dy in (23, 29, 35):
+        draw.rounded_rectangle((20, dy, 44, dy + 2), radius=1, fill=line_color)
+
     return ImageTk.PhotoImage(img)
