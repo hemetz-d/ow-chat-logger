@@ -27,6 +27,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-35 | Expose in-game chat color options as presets for team/all chat | structural | 🔴 `open` | — |
 | T-36 | Capture regression screenshot fixtures for every chat-color preset | structural | 🔴 `open` | — |
 | T-38 | Detect "message contains embedded chat prefix" as a debug-snap anomaly | structural | 🔴 `open` | — |
+| T-39 | Extend build to produce a Windows installer | structural | 🔴 `open` | — |
 | T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🟢 `done` | 2026-04-17 |
 | T-37 | Move `debug_snaps/` and `analysis/` out of user `log_dir` | structural | 🟢 `done` | 2026-04-17 |
 | T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🟢 `done` | 2026-04-17 |
@@ -148,6 +149,34 @@ Observed in a live game: a single record was emitted as `Joebar: J: hello [Makik
 **Fix direction:** (a) Add `message_contains_embedded_prefix(record, *, prefix_regex)` predicate to `debug_snaps.py` that searches `record["msg"]` for a second chat-line prefix match (re-using `LINE_PATTERN` or a dedicated regex). (b) Wire it into `processing_worker` alongside the two existing predicates, with reason `"embedded_prefix"` and details including the matched span. (c) Add unit tests covering the Joebar example, bracketed-name variants, and a negative case where a username appears inside a legitimate message (e.g. `"tell @Joebar hi"`). (d) Separately, once snaps confirm the root cause, open a follow-up task to fix the actual merge (reconstruction or continuation-gap logic).
 
 **Test surface:** `tests/test_debug_snaps.py` — predicate unit tests; eventual root-cause fix will need a regression fixture.
+
+---
+
+### T-39 · Extend build to produce a Windows installer
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `build_exe.ps1`, new installer spec (e.g. `installer/ow-chat-logger.iss` or `installer/ow-chat-logger.wxs`), CI workflow if/when added
+- **Completed:** —
+
+Today `build_exe.ps1` produces a Nuitka standalone folder under `dist/` — good for local dev, but a release-grade distribution needs a single `.exe` installer the user can double-click. Without one, first-run UX is "download a zip, extract somewhere, find the exe, pin it manually", which is a non-starter for non-technical users and blocks any future signed/auto-updating release flow.
+
+**Fix direction:**
+- (a) Pick a toolchain. Candidates:
+  - **Inno Setup** (`iscc`, free, script-driven `.iss`, simplest, widely used for Nuitka/PyInstaller outputs) — recommended default.
+  - **WiX Toolset** (`.wxs`, produces `.msi`, better for enterprise/GPO deployment, steeper learning curve).
+  - **NSIS** (`.nsi`, free, works but less ergonomic than Inno).
+- (b) Add an `installer/` directory with the spec (`ow-chat-logger.iss` for Inno Setup) covering: app name, version (pulled from `pyproject.toml`), publisher, install dir default (`%LOCALAPPDATA%\Programs\OW Chat Logger`), Start Menu shortcut, optional desktop shortcut, uninstaller entry.
+- (c) Extend `build_exe.ps1` with a post-Nuitka step that invokes the installer compiler on the `dist/` output and drops `OWChatLogger-Setup-<version>.exe` into `dist/installer/`. Gate behind a flag (e.g. `-Installer` switch) so the default dev flow still produces just the folder.
+- (d) Decide on handling for `%APPDATA%\ow-chat-logger\config.json` — installer must NOT overwrite it if present; uninstaller must NOT delete user data by default (offer a checkbox). Include the `dev/` subtree (T-37 target) in the "leave on uninstall" rule.
+- (e) Document the build flow in the README (prereq: install Inno Setup, add `iscc` to PATH) and note version bump procedure.
+- (f) Non-goal for this task: code signing (separate follow-up — needs a cert and a KMS/HSM story), auto-update (needs an update server), CI automation (add once GitHub Actions or equivalent lands).
+
+**Test surface:** manual — build the installer, run it on a clean Windows user account, verify:
+- install completes without admin elevation where possible,
+- Start Menu shortcut launches the app,
+- app writes `config.json` / `dev/debug_snaps/` to `%APPDATA%` as expected,
+- uninstall removes installed files but preserves user config and `dev/` artefacts,
+- reinstall over an existing install does not clobber user data.
 
 ---
 
