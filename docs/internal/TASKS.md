@@ -16,7 +16,6 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 |----|-------|----------|-------|-----------|
 | T-10 | Dead commented-out code | smell | 🔴 `open` | — |
 | T-11 | CLI `--metrics` asymmetric flag | smell | 🔴 `open` | — |
-| T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🔴 `open` | — |
 | T-21 | `SYSTEM_PATTERNS` redundant `.*` prefixes | smell | 🔴 `open` | — |
 | T-22 | `_effective_scale_factor` computed twice per resize | smell | 🔴 `open` | — |
 | T-25 | Inline error-case dict in `run_benchmark` duplicates `_unavailable_case` | smell | 🔴 `open` | — |
@@ -27,8 +26,10 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-34 | Verify GUI chat-color settings propagate to all detection paths | structural | 🔴 `open` | — |
 | T-35 | Expose in-game chat color options as presets for team/all chat | structural | 🔴 `open` | — |
 | T-36 | Capture regression screenshot fixtures for every chat-color preset | structural | 🔴 `open` | — |
+| T-38 | Detect "message contains embedded chat prefix" as a debug-snap anomaly | structural | 🔴 `open` | — |
 | T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🟢 `done` | 2026-04-17 |
 | T-37 | Move `debug_snaps/` and `analysis/` out of user `log_dir` | structural | 🟢 `done` | 2026-04-17 |
+| T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🟢 `done` | 2026-04-17 |
 | T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | ⚫ `deferred` | — |
 | T-17 | T-15 false positive: legitimate names ending in `l` stripped when bracket is missing | bug | ⚫ `deferred` | — |
 | T-01 | Y-anchor drift in `reconstruct_lines` | bug | 🟢 `done` | 2026-04-03 |
@@ -61,20 +62,6 @@ Detailed entries for completed tasks are not repeated below; see git history (co
 ---
 
 ## Structural Issues
-
-### T-20 · Save debug screenshot when a parsing anomaly is detected
-- **Severity:** structural
-- **State:** 🔴 `open`
-- **File:** `src/ow_chat_logger/pipeline.py`, `src/ow_chat_logger/live_runtime.py`
-- **Completed:** —
-
-When the OCR pipeline produces a suspicious result — e.g. a line falls through to `continuation` instead of matching a standard pattern, a player name is stripped by the `ocr_fix_closing_bracket_l` heuristic, or an empty OCR result is returned for a non-blank mask — there is currently no capture of the frame that caused it. Diagnosing these cases requires reproducing the exact screen state, which is often impossible after the fact.
-
-**Fix direction:** Define an anomaly predicate (callable, configurable) that receives the `extract_chat_debug_data` return dict and returns `True` when the frame is considered anomalous. When triggered, save the cropped RGB image (and optionally the team/all masks) to a configurable directory (e.g. `debug_screenshots/`) with a timestamp filename. Wire the predicate into the live runtime loop after `extract_chat_lines`. Keep the save path and the predicate out of the hot path when not triggered.
-
-**Test surface:** `tests/test_pipeline.py` — add a test that invokes the anomaly predicate with a synthetic debug dict containing a `continuation`-only parse result and confirms a file is written to a temp directory.
-
----
 
 ### T-30 · Improve team-chat color masking for blue-on-blue scenarios
 - **Severity:** structural
@@ -147,6 +134,20 @@ For T-35 to be trustworthy we need one real screenshot per in-game chat color (t
 **Test surface:** `tests/test_regression_screenshots.py` (or a new `tests/test_chat_color_preset_screenshots.py` if parametrization gets awkward).
 
 **Depends on:** blocks T-35 completion — presets should not merge without corresponding fixtures.
+
+---
+
+### T-38 · Detect "message contains embedded chat prefix" as a debug-snap anomaly
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/debug_snaps.py`, `src/ow_chat_logger/live_runtime.py`
+- **Completed:** —
+
+Observed in a live game: a single record was emitted as `Joebar: J: hello [Makiko] hey`, which is clearly two chat messages (`Joebar: hello` and `Makiko: hey`) merged into one record during Y-anchor grouping / continuation merge. Neither T-20 predicate catches this — bboxes produced lines, and every character is in the allowed set. The signal is structural: a parsed `msg` that itself contains a `LINE_PATTERN`-like prefix (`[Makiko] hey` / `Makiko: hey`) implies two lines were welded together upstream.
+
+**Fix direction:** (a) Add `message_contains_embedded_prefix(record, *, prefix_regex)` predicate to `debug_snaps.py` that searches `record["msg"]` for a second chat-line prefix match (re-using `LINE_PATTERN` or a dedicated regex). (b) Wire it into `processing_worker` alongside the two existing predicates, with reason `"embedded_prefix"` and details including the matched span. (c) Add unit tests covering the Joebar example, bracketed-name variants, and a negative case where a username appears inside a legitimate message (e.g. `"tell @Joebar hi"`). (d) Separately, once snaps confirm the root cause, open a follow-up task to fix the actual merge (reconstruction or continuation-gap logic).
+
+**Test surface:** `tests/test_debug_snaps.py` — predicate unit tests; eventual root-cause fix will need a regression fixture.
 
 ---
 
