@@ -65,7 +65,12 @@ def test_logger_prints_green_hero_tracking_messages(capsys):
     log_path = log_dir / "hero.csv"
     if log_path.exists():
         log_path.unlink()
-    logger = MessageLogger(str(log_path), print_messages=True, print_mode="hero")
+    logger = MessageLogger(
+        str(log_path),
+        print_messages=True,
+        print_mode="hero",
+        include_chat_type=False,
+    )
 
     logger.log("2026-01-01 00:00:02", "Alice", "Mercy", "team")
     logger.close()
@@ -73,3 +78,32 @@ def test_logger_prints_green_hero_tracking_messages(capsys):
     assert capsys.readouterr().out.splitlines() == [
         "\033[38;5;77m2026-01-01 00:00:02 | HERO | Alice / Mercy\033[0m",
     ]
+
+
+def test_hero_logger_writes_three_column_rows():
+    log_dir = Path(__file__).resolve().parent / "_tmp_logger_hero_rows"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "hero.csv"
+    if log_path.exists():
+        log_path.unlink()
+    logger = MessageLogger(str(log_path), print_mode="hero", include_chat_type=False)
+
+    logger.log("2026-01-01 00:00:02", "Alice", "Mercy", "team")
+    logger.close()
+
+    with log_path.open(newline="", encoding="utf-8") as fh:
+        rows = list(csv.reader(fh))
+
+    assert rows == [["2026-01-01 00:00:02", "Alice", "Mercy"]]
+
+
+def test_chat_logger_requires_chat_type():
+    log_dir = Path(__file__).resolve().parent / "_tmp_logger_missing_chat_type"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "chat.csv"
+    if log_path.exists():
+        log_path.unlink()
+    logger = MessageLogger(str(log_path))
+
+    with pytest.raises(ValueError):
+        logger.log("2026-01-01 00:00:00", "Alice", "hello")

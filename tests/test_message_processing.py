@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 from ow_chat_logger.buffer import MessageBuffer
+from ow_chat_logger.hero_roster import canonicalize_hero_name
 from ow_chat_logger.message_processing import (
     normalize_finished_message,
     collect_screenshot_messages,
@@ -310,6 +311,10 @@ def test_normalize_finished_message_canonicalizes_hero_variants():
     )
 
     assert actual["hero"] == "D.Va"
+
+
+def test_canonicalize_hero_name_accepts_sierra():
+    assert canonicalize_hero_name("sierra") == "Sierra"
 
 
 def test_normalize_finished_message_drops_unknown_hero():

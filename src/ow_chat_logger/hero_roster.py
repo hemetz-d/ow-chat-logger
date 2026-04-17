@@ -42,6 +42,7 @@ CANONICAL_HEROES = (
     "Reinhardt",
     "Roadhog",
     "Sigma",
+    "Sierra",
     "Sojourn",
     "Soldier 76",
     "Soldier: 76",

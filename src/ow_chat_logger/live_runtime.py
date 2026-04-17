@@ -354,7 +354,12 @@ def run_live_logger(
     hero_dedup = DuplicateFilter(CONFIG["max_remembered"])
 
     paths = get_app_paths()
-    hero_logger = MessageLogger(str(paths.hero_log), print_messages=True, print_mode="hero")
+    hero_logger = MessageLogger(
+        str(paths.hero_log),
+        print_messages=True,
+        print_mode="hero",
+        include_chat_type=False,
+    )
     chat_logger = MessageLogger(str(paths.chat_log), print_messages=True)
 
     team_buffer = MessageBuffer()

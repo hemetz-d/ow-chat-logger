@@ -17,11 +17,7 @@ def colorize_console_text(text: str, color: str | None) -> str:
 
 
 class MessageLogger:
-    """Log chat/hero messages to a CSV file.
-
-    This class is used for both chat messages and hero voicelines. Each row has
-    the form [timestamp, player, text, chat_type].
-    """
+    """Log chat or hero records to a CSV file."""
 
     def __init__(
         self,
@@ -29,24 +25,37 @@ class MessageLogger:
         *,
         print_messages: bool = False,
         print_mode: str = "chat",
+        include_chat_type: bool = True,
     ):
         self.file_path = Path(file_path)
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
         self.print_messages = print_messages
         self.print_mode = print_mode
+        self.include_chat_type = include_chat_type
         self._lock = Lock()
         self._file = self.file_path.open("a", newline="", encoding="utf-8")
         self._writer = csv.writer(self._file)
         self._closed = False
 
-    def log(self, timestamp: str, player: str, text: str, chat_type: str):
+    def log(
+        self,
+        timestamp: str,
+        player: str,
+        text: str,
+        chat_type: str | None = None,
+    ):
         with self._lock:
             if self._closed:
                 raise RuntimeError(f"Cannot log to closed file: {self.file_path}")
-            self._writer.writerow([timestamp, player, text, chat_type])
+            row = [timestamp, player, text]
+            if self.include_chat_type:
+                if chat_type is None:
+                    raise ValueError("chat_type is required for chat log rows")
+                row.append(chat_type)
+            self._writer.writerow(row)
 
         if self.print_messages:
-            print(self._format_print_message(timestamp, player, text, chat_type))
+            print(self._format_print_message(timestamp, player, text, chat_type or ""))
 
     def _format_print_message(
         self,
