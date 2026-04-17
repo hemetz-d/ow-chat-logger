@@ -12,6 +12,7 @@ from ow_chat_logger.config import (
     DEFAULT_OCR_PROFILE,
     EASYOCR_MASTER_BASELINE_PROFILE,
     TESSERACT_DEFAULT_PROFILE,
+    ResolvedOCRProfile,
     merge_runtime_config,
     resolve_ocr_profile,
 )
@@ -82,13 +83,11 @@ def _benchmark_case(
     *,
     png_path: Path,
     expected_path: Path,
-    config: dict[str, Any],
-    profile_name: str,
+    profile: ResolvedOCRProfile,
     backend,
 ) -> dict[str, Any]:
     expected = load_json_file(expected_path)
     rgb_image = load_rgb_image(png_path)
-    profile = resolve_ocr_profile(config, profile_name)
     sample_overrides = expected.get("config_overrides") or {}
     debug_data = extract_chat_debug_data(
         rgb_image,
@@ -285,8 +284,7 @@ def run_benchmark(args) -> int:
                     _benchmark_case(
                         png_path=png_path,
                         expected_path=expected_path,
-                        config=config,
-                        profile_name=profile_name,
+                        profile=profile,
                         backend=backend,
                     )
                 )

@@ -16,7 +16,6 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 |----|-------|----------|-------|-----------|
 | T-10 | Dead commented-out code | smell | 🔴 `open` | — |
 | T-11 | CLI `--metrics` asymmetric flag | smell | 🔴 `open` | — |
-| T-13 | `_benchmark_case` redundantly re-resolves profile per fixture | structural | 🔴 `open` | — |
 | T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🔴 `open` | — |
 | T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🔴 `open` | — |
 | T-21 | `SYSTEM_PATTERNS` redundant `.*` prefixes | smell | 🔴 `open` | — |
@@ -37,6 +36,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-08 | Shutdown race on buffer flush | structural | 🟢 `done` | 2026-04-17 |
 | T-09 | `OCREngine` has no swappable interface | structural | 🟢 `done` | 2026-04-03 |
 | T-12 | `ResolvedOCRProfile` mutable dict fields in frozen dataclass | structural | 🟢 `done` | 2026-04-17 |
+| T-13 | `_benchmark_case` redundantly re-resolves profile per fixture | structural | 🟢 `done` | 2026-04-17 |
 | T-15 | Trailing `l:` in player prefix should normalize to closing bracket | bug | 🟢 `done` | 2026-04-03 |
 | T-16 | Capital `I` closing-bracket OCR suffix not covered by T-15 | bug | 🟢 `done` | 2026-04-03 |
 | T-18 | `\|` → `I` substitution in `normalize()` corrupts `l`-as-pipe in message content | bug | 🟢 `done` | 2026-04-03 |
@@ -57,20 +57,6 @@ Detailed entries for completed tasks are not repeated below; see git history (co
 ---
 
 ## Structural Issues
-
-### T-13 · `_benchmark_case` redundantly resolves profile per fixture
-- **Severity:** structural
-- **State:** 🔴 `open`
-- **File:** `src/ow_chat_logger/benchmark.py:91`
-- **Completed:** —
-
-`run_benchmark` resolves `profile = resolve_ocr_profile(config, profile_name)` before the fixture loop (benchmark.py:264) and builds the backend from it. Then `_benchmark_case` calls `resolve_ocr_profile(config, profile_name)` again internally for the same profile name. `resolve_ocr_profile` performs a `deepcopy` of pipeline and settings on every call — this runs once per fixture, per profile, needlessly.
-
-**Fix direction:** Pass the already-resolved `ResolvedOCRProfile` into `_benchmark_case` as a parameter rather than re-resolving it internally.
-
-**Test surface:** `tests/test_benchmark.py` — verify the case function uses the passed profile without re-resolving.
-
----
 
 ### T-14 · `ocr_engine.py` legacy shim monkey-patches a module-level function in `__init__`
 - **Severity:** structural
