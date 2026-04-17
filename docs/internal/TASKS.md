@@ -16,7 +16,6 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 |----|-------|----------|-------|-----------|
 | T-10 | Dead commented-out code | smell | 🔴 `open` | — |
 | T-11 | CLI `--metrics` asymmetric flag | smell | 🔴 `open` | — |
-| T-12 | `ResolvedOCRProfile` mutable dict fields in frozen dataclass | structural | 🔴 `open` | — |
 | T-13 | `_benchmark_case` redundantly re-resolves profile per fixture | structural | 🔴 `open` | — |
 | T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🔴 `open` | — |
 | T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🔴 `open` | — |
@@ -37,6 +36,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-06 | Redundant crop on every live frame | structural | 🟢 `done` | 2026-04-06 |
 | T-08 | Shutdown race on buffer flush | structural | 🟢 `done` | 2026-04-17 |
 | T-09 | `OCREngine` has no swappable interface | structural | 🟢 `done` | 2026-04-03 |
+| T-12 | `ResolvedOCRProfile` mutable dict fields in frozen dataclass | structural | 🟢 `done` | 2026-04-17 |
 | T-15 | Trailing `l:` in player prefix should normalize to closing bracket | bug | 🟢 `done` | 2026-04-03 |
 | T-16 | Capital `I` closing-bracket OCR suffix not covered by T-15 | bug | 🟢 `done` | 2026-04-03 |
 | T-18 | `\|` → `I` substitution in `normalize()` corrupts `l`-as-pipe in message content | bug | 🟢 `done` | 2026-04-03 |
@@ -57,20 +57,6 @@ Detailed entries for completed tasks are not repeated below; see git history (co
 ---
 
 ## Structural Issues
-
-### T-12 · `ResolvedOCRProfile` is frozen but contains mutable dicts
-- **Severity:** structural
-- **State:** 🔴 `open`
-- **File:** `src/ow_chat_logger/ocr/base.py:21-27`
-- **Completed:** —
-
-`ResolvedOCRProfile` is declared `@dataclass(frozen=True)` but its `pipeline: dict` and `settings: dict` fields are plain mutable dicts. `frozen=True` only prevents field reassignment — it does not prevent content mutation. Any caller can do `profile.pipeline["scale_factor"] = 999` and silently corrupt shared state. `resolve_ocr_profile` uses `deepcopy` when building the profile, but callers are not protected afterwards.
-
-**Fix direction:** Use `types.MappingProxyType` for `pipeline` and `settings` fields to make them genuinely read-only at runtime, or replace the frozen dataclass with a regular class that copies on access.
-
-**Test surface:** `tests/test_config_helpers.py` — add a test verifying that mutation of `profile.pipeline` is either prevented or does not affect subsequent pipeline calls.
-
----
 
 ### T-13 · `_benchmark_case` redundantly resolves profile per fixture
 - **Severity:** structural

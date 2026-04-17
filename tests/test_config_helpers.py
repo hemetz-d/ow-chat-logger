@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from ow_chat_logger.config import CONFIG, resolve_log_dir
+from ow_chat_logger.ocr import ResolvedOCRProfile
 
 
 def test_resolve_log_dir_expanduser(monkeypatch):
@@ -29,6 +30,20 @@ def test_resolve_log_dir_appdata(monkeypatch):
 def test_lazy_config_is_read_only():
     with pytest.raises(TypeError):
         CONFIG["capture_interval"] = 99.0
+
+
+def test_resolved_ocr_profile_pipeline_and_settings_are_read_only():
+    profile = ResolvedOCRProfile(
+        name="n",
+        engine_id="e",
+        languages=["en"],
+        pipeline={"scale_factor": 3},
+        settings={"confidence_threshold": 0.7},
+    )
+    with pytest.raises(TypeError):
+        profile.pipeline["scale_factor"] = 4
+    with pytest.raises(TypeError):
+        profile.settings["confidence_threshold"] = 0.9
 
 
 def test_get_app_paths_uses_packaged_output_dir_on_frozen_windows(monkeypatch):

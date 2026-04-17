@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, Protocol, TypeAlias
 
 import numpy as np
@@ -23,8 +25,12 @@ class ResolvedOCRProfile:
     name: str
     engine_id: str
     languages: list[str]
-    pipeline: dict[str, Any]
-    settings: dict[str, Any]
+    pipeline: Mapping[str, Any]
+    settings: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "pipeline", MappingProxyType(dict(self.pipeline)))
+        object.__setattr__(self, "settings", MappingProxyType(dict(self.settings)))
 
 
 class OCRBackend(Protocol):
