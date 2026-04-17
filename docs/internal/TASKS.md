@@ -197,6 +197,25 @@ Once the app ships via a Windows installer (T-39), users who installed an older 
 
 ---
 
+### T-41 · Set up CI for PRs (tests + lint on GitHub Actions)
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** new `.github/workflows/ci.yml`, `pyproject.toml` (lint/format tool config if added), follow-up `.github/workflows/build.yml` once T-39 lands
+- **Completed:** —
+
+Today there is no automated check on PRs — `pytest` runs only on developer machines, and nothing stops a regression from merging to `master` if the author forgets to run the suite locally. Every new task that adds tests (T-40 updater tests, T-36 regression fixtures, T-31 helper extraction) relies entirely on reviewer discipline. Without CI the test surfaces described elsewhere in this doc are aspirational rather than enforced, and reviewers have no signal beyond reading the diff.
+
+**Fix direction:**
+- (a) Add `.github/workflows/ci.yml` triggered on `pull_request` and `push` to `master`. Primary runner: `windows-latest` — the app has Windows-only deps (`winrt-*`, `pywinstyles`) and the target platform is Windows, so Linux runners would need extensive skips to be useful. Matrix across Python 3.10 / 3.11 / 3.12 (current `requires-python = ">=3.10"`). Steps: checkout, `actions/setup-python` with pip cache keyed on `pyproject.toml`, `pip install -e ".[dev]"`, `pytest`.
+- (b) Pick a lint/format toolchain and run it as a separate, fast-failing job. Recommended: `ruff check` + `ruff format --check` (single tool, zero-config baseline, no black/flake8/isort sprawl). Land the initial formatting pass in its own PR so this task's CI-enablement PR doesn't also carry a repo-wide reformat.
+- (c) Gate merges on green CI — enable branch protection on `master` requiring the `ci` check. This is a GitHub repo settings change, not a code change; call it out in the PR description so the maintainer can flip it after merge.
+- (d) Handle optional OCR extras: `easyocr`/`pytesseract` are optional and pull heavy deps (torch, system tesseract). Default CI installs `[dev]` only; any test that requires a real OCR backend should be marked (`@pytest.mark.ocr`) and deferred to an optional, manually-triggered job rather than gating every PR on a multi-GB install.
+- (e) Non-goals for this task: code signing, release automation, publishing installers. Those belong with T-39 — once it lands, a follow-up `build.yml` (tag-triggered) can invoke `build_exe.ps1` plus the installer compiler. Keep this task strictly scoped to PR gating.
+
+**Test surface:** the workflow itself — verify on a throwaway PR that (1) a deliberately broken test fails the CI run, (2) a lint violation fails the lint job, (3) the check is green on `master` after merge. No in-repo test changes required; this task is pure infra.
+
+---
+
 ## Smells
 
 ### T-10 · Dead commented-out code in `image_processing.py`
