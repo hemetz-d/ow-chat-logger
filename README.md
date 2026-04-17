@@ -4,6 +4,10 @@ Windows-only OCR-based Overwatch chat logger.
 
 It captures the chat area, isolates team and all-chat by color, runs OCR, reconstructs lines, and writes deduplicated messages to CSV. The default and best-supported backend is Windows OCR.
 
+`chat_log.csv` stores `timestamp,player,message,chat_type`.
+
+`hero_log.csv` stores `timestamp,player,hero`.
+
 ## Quick Start
 
 ### 1. Install
