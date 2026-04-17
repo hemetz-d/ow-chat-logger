@@ -7,6 +7,7 @@ import tkinter.colorchooser as colorchooser
 
 import customtkinter as ctk
 
+from ow_chat_logger.gui import theme as T
 from ow_chat_logger.gui.backend_bridge import BackendBridge, StatusEvent
 from ow_chat_logger.gui.config_io import (
     load_ui_config,
@@ -37,101 +38,174 @@ def _hex_to_hsv_bounds(hex_color: str, hue_tol: int = 14) -> tuple[list[int], li
     return lower, upper
 
 
+# ── Appearance mode cycling ──────────────────────────────────────────────────
+
+_MODE_ORDER = ("system", "light", "dark")
+_MODE_ICON = {"system": "◐", "light": "☀", "dark": "☾"}
+_MODE_LABEL = {"system": "Auto", "light": "Light", "dark": "Dark"}
+
+
+def _apply_appearance(mode: str) -> None:
+    ctk.set_appearance_mode("System" if mode == "system" else mode.capitalize())
+
+
 # ── Main application window ───────────────────────────────────────────────────
 
 class OWChatLoggerApp(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
         self.title("OW Chat Logger")
-        self.geometry("900x640")
-        self.minsize(600, 400)
-        self.configure(fg_color="#1a1a2e")
+        self.geometry("960x660")
+        self.minsize(780, 460)
+
+        cfg = load_ui_config()
+        self._appearance_mode: str = str(cfg.get("ui_appearance_mode", "system"))
+        if self._appearance_mode not in _MODE_ORDER:
+            self._appearance_mode = "system"
+        _apply_appearance(self._appearance_mode)
+
+        self.configure(fg_color=T.BG_ROOT)
         self._bridge = BackendBridge()
         self._polling = False
         self._settings_window: ctk.CTkToplevel | None = None
         self._swatches: dict[str, ctk.CTkButton] = {}
+        self._mode_btn: ctk.CTkButton | None = None
         self._build_ui()
+        T.apply_chrome(self)
+        icon = T.make_app_icon_photo()
+        if icon is not None:
+            self._app_icon = icon  # retain reference (Tk image registry is weak)
+            self.iconphoto(True, icon)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._start_polling()
 
     # ── UI construction ───────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
+        # Pack order matters: side="bottom" must come before the expanding
+        # feed, or Tk gives all remaining cavity to the expander.
         self._build_toolbar()
-        self._build_feed()
         self._build_bottom_bar()
+        self._build_feed()
 
     def _build_toolbar(self) -> None:
-        toolbar = ctk.CTkFrame(self, height=52, fg_color="#16213e", corner_radius=0)
+        toolbar = ctk.CTkFrame(self, height=58, fg_color=T.BG_CHROME, corner_radius=0)
         toolbar.pack(fill="x", side="top")
         toolbar.pack_propagate(False)
+        toolbar.grid_columnconfigure(0, weight=0)
+        toolbar.grid_columnconfigure(1, weight=1)
+        toolbar.grid_columnconfigure(2, weight=0)
+        toolbar.grid_rowconfigure(0, weight=1)
+
+        # Left group: title + status chip
+        left = ctk.CTkFrame(toolbar, fg_color="transparent")
+        left.grid(row=0, column=0, sticky="w", padx=(22, 0), pady=10)
 
         ctk.CTkLabel(
-            toolbar,
+            left,
             text="OW Chat Logger",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color="#5BC8F5",
-        ).pack(side="left", padx=16, pady=10)
+            font=T.font_title(),
+            text_color=T.TEXT_PRIMARY,
+        ).pack(side="left", padx=(0, 14))
+
+        chip = ctk.CTkFrame(
+            left,
+            fg_color=T.BG_ELEV,
+            corner_radius=T.R_PILL,
+        )
+        chip.pack(side="left")
 
         self._status_dot = ctk.CTkLabel(
-            toolbar, text="●", text_color="#555555", font=ctk.CTkFont(size=16)
+            chip, text="●", text_color=T.IDLE, font=ctk.CTkFont(size=10)
         )
-        self._status_dot.pack(side="left", padx=(12, 4))
+        self._status_dot.pack(side="left", padx=(12, 6), pady=5)
         self._status_label = ctk.CTkLabel(
-            toolbar, text="Idle", text_color="#888888", font=ctk.CTkFont(size=12)
+            chip,
+            text="Idle",
+            text_color=T.TEXT_SECONDARY,
+            font=T.font_caption(),
         )
-        self._status_label.pack(side="left")
+        self._status_label.pack(side="left", padx=(0, 14), pady=5)
+
+        # Right group: pill-style action buttons (grid-pinned so they never clip)
+        right = ctk.CTkFrame(toolbar, fg_color="transparent")
+        right.grid(row=0, column=2, sticky="e", padx=(0, 18), pady=13)
+
+        self._start_btn = ctk.CTkButton(
+            right,
+            text="Start",
+            width=72,
+            height=28,
+            corner_radius=14,
+            font=T.font_small(),
+            fg_color=T.ACCENT,
+            hover_color=T.ACCENT_HOVER,
+            text_color=T.ACCENT_FG,
+            command=self._on_start,
+        )
+        self._start_btn.pack(side="left", padx=(0, 6))
 
         self._stop_btn = ctk.CTkButton(
-            toolbar,
+            right,
             text="Stop",
-            width=88,
-            height=34,
-            fg_color="#dc3545",
-            hover_color="#c82333",
+            width=72,
+            height=28,
+            corner_radius=14,
+            font=T.font_small(),
+            fg_color="transparent",
+            border_width=1,
+            border_color=T.BORDER_HAIRLINE,
+            hover_color=T.BG_ELEV,
+            text_color=T.DANGER,
             command=self._on_stop,
             state="disabled",
         )
-        self._stop_btn.pack(side="right", padx=(4, 16), pady=9)
-
-        self._start_btn = ctk.CTkButton(
-            toolbar,
-            text="Start",
-            width=88,
-            height=34,
-            fg_color="#28a745",
-            hover_color="#218838",
-            command=self._on_start,
-        )
-        self._start_btn.pack(side="right", padx=4, pady=9)
+        self._stop_btn.pack(side="left")
 
     def _build_feed(self) -> None:
         self._feed_panel = FeedPanel(self)
-        self._feed_panel.pack(fill="both", expand=True, padx=0, pady=0)
+        self._feed_panel.pack(fill="both", expand=True, padx=16, pady=(12, 8))
 
     def _build_bottom_bar(self) -> None:
-        bar = ctk.CTkFrame(self, height=52, fg_color="#16213e", corner_radius=0)
+        bar = ctk.CTkFrame(self, height=56, fg_color=T.BG_CHROME, corner_radius=0)
         bar.pack(fill="x", side="bottom")
         bar.pack_propagate(False)
 
-        # Thin separator line at top of bar
-        ctk.CTkFrame(bar, height=1, fg_color="#0f3460", corner_radius=0).pack(
+        # Hairline top border
+        ctk.CTkFrame(bar, height=1, fg_color=T.BORDER_HAIRLINE, corner_radius=0).pack(
             fill="x", side="top"
         )
 
-        # Color swatches
+        # Grid shell: left / flexible spacer / right
+        content = ctk.CTkFrame(bar, fg_color="transparent")
+        content.pack(fill="both", expand=True)
+        content.grid_columnconfigure(0, weight=0)
+        content.grid_columnconfigure(1, weight=1)
+        content.grid_columnconfigure(2, weight=0)
+        content.grid_rowconfigure(0, weight=1)
+
+        # Left group: chat colors + Open Logs
+        left = ctk.CTkFrame(content, fg_color="transparent")
+        left.grid(row=0, column=0, sticky="w", padx=(22, 0), pady=12)
+
         ctk.CTkLabel(
-            bar, text="Chat colors:", text_color="#888888", font=ctk.CTkFont(size=11)
-        ).pack(side="left", padx=(14, 6), pady=10)
+            left,
+            text="Chat colors",
+            text_color=T.TEXT_MUTED,
+            font=T.font_caption(),
+        ).pack(side="left", padx=(0, 12))
 
         cfg = load_ui_config()
         for chat_key, label, fallback in (
-            ("team", "Team", "#5BC8F5"),
-            ("all", "All", "#FFAA00"),
+            ("team", "Team", T.pick(T.CHAT_TEAM)),
+            ("all", "All", T.pick(T.CHAT_ALL)),
         ):
             ctk.CTkLabel(
-                bar, text=label, text_color="#aaaaaa", font=ctk.CTkFont(size=11)
-            ).pack(side="left", padx=(0, 4))
+                left,
+                text=label,
+                text_color=T.TEXT_SECONDARY,
+                font=T.font_caption(),
+            ).pack(side="left", padx=(0, 6))
 
             try:
                 hex_color = _hsv_bounds_to_hex(
@@ -141,51 +215,75 @@ class OWChatLoggerApp(ctk.CTk):
                 hex_color = fallback
 
             swatch = ctk.CTkButton(
-                bar,
+                left,
                 text="",
-                width=40,
-                height=26,
-                corner_radius=4,
+                width=30,
+                height=20,
+                corner_radius=T.R_SWATCH,
+                border_width=0,
                 fg_color=hex_color,
                 hover_color=hex_color,
                 command=lambda k=chat_key: self._pick_color(k),
             )
-            swatch.pack(side="left", padx=(0, 12))
+            swatch.pack(side="left", padx=(0, 14))
             self._swatches[chat_key] = swatch
 
-        # Separator
-        ctk.CTkFrame(bar, width=1, fg_color="#0f3460", corner_radius=0).pack(
-            side="left", fill="y", padx=4, pady=10
-        )
-
-        # Log folder
         ctk.CTkButton(
-            bar,
-            text="Open Logs ↗",
-            width=100,
+            left,
+            text="Open Logs",
+            width=96,
             height=30,
-            fg_color="#1a3a5c",
-            hover_color="#1a4a8a",
-            font=ctk.CTkFont(size=11),
+            corner_radius=T.R_BUTTON,
+            fg_color="transparent",
+            border_width=1,
+            border_color=T.BORDER_HAIRLINE,
+            hover_color=T.BG_ELEV,
+            text_color=T.TEXT_PRIMARY,
+            font=T.font_small(),
             command=open_log_folder,
-        ).pack(side="left", padx=(8, 4))
+        ).pack(side="left")
 
-        # Settings gear — right-aligned
-        ctk.CTkButton(
-            bar,
-            text="⚙  Settings",
-            width=100,
+        # Right group: appearance toggle + settings icon
+        right = ctk.CTkFrame(content, fg_color="transparent")
+        right.grid(row=0, column=2, sticky="e", padx=(12, 18), pady=12)
+
+        self._mode_btn = ctk.CTkButton(
+            right,
+            text=self._mode_button_text(),
+            width=84,
             height=30,
-            fg_color="#2a2a3e",
-            hover_color="#3a3a52",
-            font=ctk.CTkFont(size=11),
+            corner_radius=T.R_BUTTON,
+            fg_color="transparent",
+            border_width=1,
+            border_color=T.BORDER_HAIRLINE,
+            hover_color=T.BG_ELEV,
+            text_color=T.TEXT_PRIMARY,
+            font=T.font_small(),
+            command=self._cycle_appearance_mode,
+        )
+        self._mode_btn.pack(side="left", padx=(0, 6))
+
+        ctk.CTkButton(
+            right,
+            text="⚙",
+            width=32,
+            height=30,
+            corner_radius=T.R_BUTTON,
+            fg_color="transparent",
+            border_width=1,
+            border_color=T.BORDER_HAIRLINE,
+            hover_color=T.BG_ELEV,
+            text_color=T.TEXT_PRIMARY,
+            font=ctk.CTkFont(size=15),
             command=self._open_settings_modal,
-        ).pack(side="right", padx=(4, 14))
+        ).pack(side="left")
 
     # ── Color picker ──────────────────────────────────────────────────────────
 
     def _pick_color(self, chat_key: str) -> None:
         current_hex = self._swatches[chat_key].cget("fg_color")
+        if isinstance(current_hex, (list, tuple)):
+            current_hex = current_hex[0]
         result = colorchooser.askcolor(
             color=current_hex,
             title=f"Choose {chat_key.title()} Chat color",
@@ -217,6 +315,25 @@ class OWChatLoggerApp(ctk.CTk):
             except Exception:
                 pass
 
+    # ── Appearance mode ───────────────────────────────────────────────────────
+
+    def _mode_button_text(self) -> str:
+        icon = _MODE_ICON[self._appearance_mode]
+        label = _MODE_LABEL[self._appearance_mode]
+        return f"{icon}  {label}"
+
+    def _cycle_appearance_mode(self) -> None:
+        idx = _MODE_ORDER.index(self._appearance_mode)
+        self._appearance_mode = _MODE_ORDER[(idx + 1) % len(_MODE_ORDER)]
+        _apply_appearance(self._appearance_mode)
+        save_ui_config({"ui_appearance_mode": self._appearance_mode})
+        if self._mode_btn is not None:
+            self._mode_btn.configure(text=self._mode_button_text())
+        # Re-apply Mica + retint titlebar to new mode
+        T.apply_chrome(self)
+        if self._settings_window is not None and self._settings_window.winfo_exists():
+            T.apply_chrome(self._settings_window)
+
     # ── Settings modal ────────────────────────────────────────────────────────
 
     def _open_settings_modal(self) -> None:
@@ -227,20 +344,24 @@ class OWChatLoggerApp(ctk.CTk):
 
         win = ctk.CTkToplevel(self)
         win.title("Settings")
-        win.geometry("460x580")
-        win.minsize(400, 400)
-        win.configure(fg_color="#1a1a2e")
+        win.geometry("500x620")
+        win.minsize(440, 440)
+        win.configure(fg_color=T.BG_ROOT)
         win.transient(self)
+        T.apply_chrome(win)
 
-        header = ctk.CTkFrame(win, height=40, fg_color="#16213e", corner_radius=0)
+        header = ctk.CTkFrame(win, height=58, fg_color=T.BG_CHROME, corner_radius=0)
         header.pack(fill="x")
         header.pack_propagate(False)
         ctk.CTkLabel(
             header,
             text="Settings",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color="#5BC8F5",
-        ).pack(side="left", padx=14, pady=8)
+            font=T.font_title(),
+            text_color=T.TEXT_PRIMARY,
+        ).pack(side="left", padx=22, pady=10)
+        ctk.CTkFrame(win, height=1, fg_color=T.BORDER_HAIRLINE, corner_radius=0).pack(
+            fill="x"
+        )
 
         panel = SettingsPanel(win, on_save=self._refresh_swatches)
         panel.pack(fill="both", expand=True)
@@ -301,33 +422,33 @@ class OWChatLoggerApp(ctk.CTk):
 
     def _apply_status_event(self, event: StatusEvent) -> None:
         if event.kind == "started":
-            self._set_status("running", event.message)
+            self._set_status("running", "Running")
             self._start_btn.configure(state="disabled")
             self._stop_btn.configure(state="normal")
         elif event.kind == "stopped":
-            self._set_status("idle", "Stopped")
+            self._set_status("idle", "Idle")
             self._start_btn.configure(state="normal")
             self._stop_btn.configure(state="disabled")
         elif event.kind == "error":
-            msg = event.message[:70] + ("…" if len(event.message) > 70 else "")
-            self._set_status("error", f"Error: {msg}")
+            self._set_status("error", "Error")
             self._start_btn.configure(state="normal")
             self._stop_btn.configure(state="disabled")
 
     def _set_status(self, kind: str, text: str) -> None:
-        color = {
-            "running": "#28a745",
-            "starting": "#f0ad4e",
-            "stopping": "#f0ad4e",
-            "error": "#dc3545",
-            "idle": "#555555",
-        }.get(kind, "#888888")
+        color_map = {
+            "running": T.SUCCESS,
+            "starting": T.WARNING,
+            "stopping": T.WARNING,
+            "error": T.DANGER,
+            "idle": T.IDLE,
+        }
+        color = color_map.get(kind, T.TEXT_MUTED)
         self._status_dot.configure(text_color=color)
-        self._status_label.configure(text=text, text_color=color)
+        label_color = T.TEXT_SECONDARY if kind == "idle" else color
+        self._status_label.configure(text=text, text_color=label_color)
 
 
 def run_gui() -> int:
-    ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("blue")
     app = OWChatLoggerApp()
     app.mainloop()
