@@ -49,6 +49,8 @@ Skip tasks with state `deferred` — they are on hold by design. Skip tasks with
 
 If the human rejects the task, pick the next candidate by priority and repeat the proposal step.
 
+**Freshness check:** If the task is more than a week old, quickly verify it still applies before proposing it. Open the referenced file(s) and confirm the described issue is still present at (or near) the cited lines. If the file no longer exists, the line numbers are wildly off, or the issue looks already resolved, surface this to the human instead of accepting the task blindly — it may need to be updated, re-scoped, or closed.
+
 ### 2. Understand
 
 Before writing any code:
@@ -87,16 +89,18 @@ Checklist:
 
 **Regression tests must be run both before and after every change, without exception.**
 
-#### 5a. Capture a baseline (before touching any code)
+#### 5a. Capture a baseline (immediately after the task is accepted in step 1)
 
-Run the full regression suite on the unmodified branch and record the results:
+Before reading source files, writing a failing test, or making any edits, run the full regression suite on the unmodified branch and record the results:
 
 ```bash
 pytest --run-ocr tests/test_regression_screenshots.py
 pytest
 ```
 
-Note which tests pass and which fail. This is the **baseline**. Save or copy the output so you can compare it after the fix.
+Note which tests pass and which fail. This is the **baseline**. Save or copy the output so you can compare it after the fix. A failing test added in step 2 (Understand) is part of the fix, not the baseline — it is compared against this snapshot, not included in it.
+
+Known OCR regression failures are documented in `tests/fixtures/regression/KNOWN_FAILURES.md`. Compare new failures against that list — a "failure" that is already listed there is expected and does not count as a regression. A failure that is NOT in `KNOWN_FAILURES.md` is new and must be investigated.
 
 #### 5b. Run tests after the fix
 
