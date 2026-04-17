@@ -28,6 +28,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-36 | Capture regression screenshot fixtures for every chat-color preset | structural | 🔴 `open` | — |
 | T-38 | Detect "message contains embedded chat prefix" as a debug-snap anomaly | structural | 🔴 `open` | — |
 | T-39 | Extend build to produce a Windows installer | structural | 🔴 `open` | — |
+| T-40 | In-app update check / auto-updater for installed builds | structural | 🔴 `open` | — |
 | T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🟢 `done` | 2026-04-17 |
 | T-37 | Move `debug_snaps/` and `analysis/` out of user `log_dir` | structural | 🟢 `done` | 2026-04-17 |
 | T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🟢 `done` | 2026-04-17 |
@@ -177,6 +178,35 @@ Today `build_exe.ps1` produces a Nuitka standalone folder under `dist/` — good
 - app writes `config.json` / `dev/debug_snaps/` to `%APPDATA%` as expected,
 - uninstall removes installed files but preserves user config and `dev/` artefacts,
 - reinstall over an existing install does not clobber user data.
+
+### T-40 · In-app update check / auto-updater for installed builds
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **Priority:** low
+- **File:** new `src/ow_chat_logger/updater.py`, GUI integration in `src/ow_chat_logger/gui/app.py`, installer spec (T-39) for upgrade-in-place support
+- **Completed:** —
+
+Once the app ships via a Windows installer (T-39), users who installed an older version need a way to learn about and pull newer releases without manually re-downloading. Without this, released versions silently rot on user machines and bug fixes never reach the people who hit them.
+
+**Fix direction:** Two separable deliverables; ship either one first.
+
+- **(a) Passive update check (minimum viable):**
+  - On app start (or on an explicit "Check for updates" button), fetch the latest release metadata from GitHub Releases (`GET https://api.github.com/repos/<owner>/<repo>/releases/latest`) and compare `tag_name` against the running app's version (pulled from `pyproject.toml` / baked in at Nuitka build time).
+  - If newer, show a non-blocking banner in the GUI with a "Download" button linking to the release asset.
+  - Rate-limit: one check per 24 h max, cached in `appdata_dir/update_check.json` (respects user offline, avoids GitHub API pressure).
+  - Opt-out via a settings toggle `updates_check_on_start` (default `true` for installed builds, `false` for dev runs detected via `is_packaged_windows_run()`).
+- **(b) Auto-updater (stretch):**
+  - Download the new installer to a temp dir, verify signature / SHA256 against the release asset's checksum, launch it with `/SILENT` (Inno Setup) or `/quiet` (MSI), exit the running app so the installer can replace the binaries.
+  - Needs T-39 installer to support upgrade-in-place without clobbering `%APPDATA%\ow-chat-logger\config.json` or the `dev/` tree — called out in T-39's fix-direction already.
+  - Signing story required before auto-run (see T-39 non-goal on code signing). Until then, (a) is the safe ceiling.
+
+**Design notes / decisions to lock in before coding:**
+- Version source of truth: add `__version__` to the package and bake it into the Nuitka build, OR read from a `VERSION` file bundled next to the exe. Need to pick one; `__version__` is cleaner.
+- Release channel: stable-only vs. allow-prerelease opt-in. Default stable.
+- Offline behavior: a failed check must never block app start — wrap in `try/except`, log quietly, move on.
+- Dev run detection: skip the check entirely when not running from an installed location (avoid nagging during development).
+
+**Test surface:** `tests/test_updater.py` — version comparison (semver parsing, pre-release handling), cache TTL honored, network-error path is silent, GUI banner state transitions. Stub the GitHub API response; do not hit the network in tests.
 
 ---
 
