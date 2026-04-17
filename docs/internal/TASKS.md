@@ -239,39 +239,59 @@ Today there is no automated check on PRs — `pytest` runs only on developer mac
 ### T-43 · Search the persisted chat log for players and past messages
 - **Severity:** structural
 - **State:** 🔴 `open`
-- **File:** new `src/ow_chat_logger/log_search.py` (pure search over CSVs), new `src/ow_chat_logger/gui/search_panel.py` (results UI), `src/ow_chat_logger/gui/app.py` (entry point + keybind), `src/ow_chat_logger/config.py` (reuse `get_app_paths().chat_log` / `.hero_log`)
+- **File:** new `src/ow_chat_logger/log_search.py` (pure search over CSVs), new `src/ow_chat_logger/gui/search_panel.py` (results UI), `src/ow_chat_logger/gui/feed_panel.py` (clickable player names), `src/ow_chat_logger/gui/app.py` (entry point + keybind + click→history wiring), `src/ow_chat_logger/config.py` (reuse `get_app_paths().chat_log` / `.hero_log`)
 - **Completed:** —
 
-A single Overwatch match is short and the live feed fits comfortably in memory — a user already sees and remembers what is on screen, so filtering the live rows adds little value. What is actually valuable is recalling a specific player's past lines or a keyword from an earlier session, across the history that persists to `%APPDATA%/ow-chat-logger/chat_log.csv` and `hero_log.csv`. Today that history is reachable only via "Open Logs", which dumps the user into a folder of CSVs — there is no in-app search over it. This task adds that search. It explicitly does **not** add filtering to the live feed panel; the live feed stays as-is.
+A single Overwatch match is short and the live feed fits comfortably in memory — a user already sees and remembers what is on screen, so filtering the live rows adds little value. What is actually valuable is recalling a specific player's past lines or a keyword from an earlier session, across the history that persists to `%APPDATA%/ow-chat-logger/chat_log.csv` and `hero_log.csv`. Today that history is reachable only via "Open Logs", which dumps the user into a folder of CSVs — there is no in-app search over it. This task adds that search, plus a click-to-history affordance so clicking a player's name in the live feed opens every known line and hero pick for that exact player. It explicitly does **not** add filtering to the live feed panel; the live feed stays as-is.
 
 **Data shape:** `MessageLogger` (`src/ow_chat_logger/logger.py`) writes one append-only CSV per stream: `chat_log.csv` rows are `[timestamp, player, text, chat_type]`, `hero_log.csv` rows are `[timestamp, player, text]` (the hero name is in `text`). No rotation — both files grow for the lifetime of the install, potentially tens of thousands of rows. The live session has one of these files open for append under `MessageLogger._lock`; the search path must read a second, independent file handle (readers do not need the lock — csv append with explicit flush is safe to interleave with a reader, and a search occasionally missing the very latest line is acceptable).
 
 **Fix direction:**
-- (a) **Pure search core** — new `src/ow_chat_logger/log_search.py` exposing `search_logs(query, *, chat_log_path, hero_log_path, channel_filter=None, limit=500) -> list[SearchResult]`. `SearchResult` is a dataclass with `timestamp, player, text, source` where `source ∈ {"team", "all", "hero"}`. Implementation: stream both CSVs with `csv.reader`, skip rows whose player/text doesn't contain the (case-insensitive) query substring, assemble results sorted newest-first, cap at `limit`. No pandas, no pre-loading — `csv.reader` over a file handle is fast enough for tens of thousands of rows and keeps memory bounded. This module has zero GUI dependencies and is fully unit-testable.
-- (b) **Search panel UI** — new `src/ow_chat_logger/gui/search_panel.py` defining a `SearchPanel(CTkToplevel)` modal: single-column layout, top bar with a `CTkEntry` (placeholder `Search player or message…`) plus an optional `CTkSegmentedButton` channel filter (`All`, `Team`, `All chat`, `Hero`), body is a `CTkScrollableFrame` of compact result rows, footer shows `N results` / `limit reached — refine query`. Result row format: `[timestamp muted] [channel dot] [player bold] [message, secondary]` — reuse the dot color convention from `feed_panel.MessageRow` so the visual language matches. Debounce typing by ~150 ms before running the search so a user typing "reinhardt" triggers one scan, not eight. Escape closes the modal; Enter moves focus to the first result for keyboard browsing (no navigation action needed beyond that).
-- (c) **Entry point** — wire a search icon button into the feed panel header (right side, left of the message count pill). Tooltip/labelless — reuse the `search` glyph already in `icons.py`. Clicking opens the modal. Bind `Ctrl+F` at the main-window level (`app.py`) to open/focus the same modal. Do not add a search input to the feed header — search is not a live-feed operation.
-- (d) **Path resolution** — the search reads `get_app_paths().chat_log` and `get_app_paths().hero_log` on every query. If the file does not exist (fresh install, no session run), treat it as an empty source (return []). Do not cache file content — users often search mid-session and expect recent lines to show up.
-- (e) **No writes** — the search path never opens the CSVs for write. If the files get corrupted or truncated at shutdown, the search must degrade gracefully: wrap the per-row loop in a try/except around `csv.Error` and continue past malformed rows, count skips in a debug log line but do not surface to the user.
+- (a) **Pure search core** — new `src/ow_chat_logger/log_search.py` exposing two entry points with zero GUI dependencies:
+  - `search_logs(query, *, chat_log_path, hero_log_path, channel_filter=None, limit=500) -> SearchResultSet` — free-text case-insensitive substring match against player **or** message text.
+  - `history_for_player(player, *, chat_log_path, hero_log_path, limit=1000) -> SearchResultSet` — **exact** case-insensitive match on the player column only (clicking "Chiaki" must not pull in "Chiaki123"). Returns every chat line and every hero pick for that player. The split is deliberate: the click flow wants exact equality, the free-text flow wants substring — one function doing both would need mode flags and a test matrix that doesn't pay for itself.
+  - Shared return type: `SearchResultSet(results: list[SearchResult], truncated: bool)`. `SearchResult` is a dataclass `timestamp, player, text, source` with `source ∈ {"team", "all", "hero"}`. Both functions stream the CSVs with `csv.reader`, collect matches, sort newest-first, cap at `limit`, set `truncated=True` if the raw hit count exceeded `limit`. No pandas, no pre-loading.
+- (b) **Search panel UI** — new `src/ow_chat_logger/gui/search_panel.py` defining a `SearchPanel(CTkToplevel)` modal with two modes selected by constructor argument:
+  - **Free-text mode** (`initial_player=None`): top bar with a `CTkEntry` (placeholder `Search player or message…`) plus a `CTkSegmentedButton` channel filter (`All`, `Team`, `All chat`, `Hero`). Typing is debounced ~150 ms before running `search_logs`.
+  - **Player-focused mode** (`initial_player="Chiaki"`): top bar replaces the free-text entry with a focus chip reading `Showing history for Chiaki ×`. Clicking the `×` drops the player filter and reverts to free-text mode (entry becomes editable, chip disappears). Runs `history_for_player` on open; no debounce needed since it's a single query on open.
+  - Body is a `CTkScrollableFrame` of compact result rows. Result row format: `[timestamp muted] [channel dot] [player bold] [message, secondary]` — reuse the dot color convention and `T.CHAT_HERO` color for hero source so the visual language matches the feed. Footer shows `N results` / `N results (limit reached — refine query)` when truncated. Escape closes; Enter on a populated free-text entry is a no-op (search is already live via debounce).
+- (c) **Click-to-history from the live feed** — make the player `CTkLabel` in `feed_panel.MessageRow` and `feed_panel.HeroRow` click-targets:
+  - On `<Enter>`: cursor switches to `"hand2"`, player text gains a faint underline (construct the font with `underline=True` in a hover-only font, or toggle `font=` on hover).
+  - On `<Button-1>`: fires a `FeedPanel.on_player_click(player: str)` callback passed in at construction. `OWChatLoggerApp` wires this callback to open `SearchPanel(initial_player=player)`.
+  - Trim and skip empty/placeholder player strings (`""`, `"—"`) — clicking those should be a no-op, not open an empty-history modal.
+  - The clickable affordance applies only to the player name, not the whole row (row hover already has its own highlight; conflating the two would be noisy).
+- (d) **Entry points for free-text search** — wire a search icon button into the feed panel header (right side, left of the message count pill). Reuse the `search` glyph in `icons.py`. Click → open `SearchPanel()` in free-text mode. Bind `Ctrl+F` at the main window (`app.py`) to the same open-or-focus action. Do not add a search input inline in the feed header — search is not a live-feed operation.
+- (e) **Path resolution** — every query reads `get_app_paths().chat_log` and `get_app_paths().hero_log` fresh. Missing files mean an empty source (return an empty `SearchResultSet`). Do not cache file content — users often search mid-session and expect recent lines to show up, including for their own hero picks just made.
+- (f) **No writes, safe reads** — the search path never opens the CSVs for write. Wrap the per-row loop around `csv.Error` and skip malformed rows silently (count skips in a debug log line, do not surface to the user). Open with `newline=""` and `encoding="utf-8"` to match the writer.
 
 **UI notes:**
 - Modal (Toplevel), not a panel split or an overlay on the feed. The feed stays visible underneath; a modal is the minimum disruption for a look-up-and-close flow.
 - Results should be selectable text (so the user can copy a username/message), which means using `CTkLabel` with mouse-drag text selection — tk's stock `Label` does not support that. Simplest: render each result as a read-only `CTkEntry` or a flat `tk.Text` line. Accept either; hard requirement is only "user can select and copy".
+- When opened from a player click, the modal title bar should read `History · <player>` (or similar) so the window-switcher / Alt-Tab preview is legible; free-text mode keeps the plain `Search` title.
 - Do NOT try to jump the live feed to the matched message. History rows predate the current session and no longer exist in the feed; a "jump to" affordance would be misleading.
+- Only one `SearchPanel` should be live at a time — if the user clicks a second player while a panel is open, re-target the existing panel (swap to that player's history and raise/focus) rather than stacking Toplevels.
 
 **Test surface:** new `tests/test_log_search.py`
-- Fixture: write two tmp CSVs with a known mix of team/all/hero rows (20–30 rows total, varied players and keywords, including unicode and OCR-like lookalikes).
-- Assert case-insensitive substring match on player, on message, and on both fields simultaneously.
-- Assert channel filter restricts results to the selected source.
-- Assert newest-first ordering across both files (a recent hero row should come before an older team row).
-- Assert `limit` truncates and the return value signals "more were available" (e.g. a second return value `truncated: bool`).
-- Assert malformed CSV rows are skipped, not fatal.
-- Assert missing log files return an empty list, not an exception.
+- Fixture: write two tmp CSVs with a known mix of team/all/hero rows (20–30 rows total, varied players and keywords, including unicode, case variants, and OCR-like lookalikes).
+- `search_logs`:
+  - case-insensitive substring match on player, on message, and on both fields simultaneously;
+  - channel filter restricts results to the selected source;
+  - newest-first ordering across both files (a recent hero row should come before an older team row);
+  - `limit` truncates and `SearchResultSet.truncated is True`;
+  - malformed CSV rows are skipped, not fatal;
+  - missing log files return an empty `SearchResultSet`, not an exception.
+- `history_for_player`:
+  - exact match is case-insensitive but rejects substring neighbors (`"Chiaki"` must not match `"Chiaki123"` or `"NotChiaki"`);
+  - pulls both chat and hero rows for the target player, newest-first;
+  - empty string / whitespace-only player returns an empty result rather than every row;
+  - `limit` behaves the same as `search_logs`.
 
 **Not in scope / follow-ups:**
-- Regex / whole-word / exact-phrase search modes.
+- Regex / whole-word / exact-phrase search modes (free-text side).
 - Persistent search history (last N queries remembered across launches).
 - Index-backed search (SQLite FTS) — premature until real-world CSV sizes actually become slow; `csv.reader` handles tens of thousands of rows in well under a second on realistic hardware.
 - Any live-feed filtering. The earlier draft of this task proposed filtering the live `FeedPanel` rows; that was explicitly dropped in the rework — sessions are short, the visible feed is already small, and live filter adds cost without value.
+- Context menu on player click (copy name, mute, favorite). Single left-click opens history; richer actions can land later if there is demand.
 
 ---
 
