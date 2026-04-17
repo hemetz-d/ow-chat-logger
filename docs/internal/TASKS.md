@@ -30,6 +30,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-39 | Extend build to produce a Windows installer | structural | 🔴 `open` | — |
 | T-40 | In-app update check / auto-updater for installed builds | structural | 🔴 `open` | — |
 | T-41 | Set up CI for PRs (tests + lint on GitHub Actions) | structural | 🔴 `open` | — |
+| T-43 | In-GUI search for players and old messages | structural | 🔴 `open` | — |
 | T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🟢 `done` | 2026-04-17 |
 | T-37 | Move `debug_snaps/` and `analysis/` out of user `log_dir` | structural | 🟢 `done` | 2026-04-17 |
 | T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🟢 `done` | 2026-04-17 |
@@ -232,6 +233,30 @@ Today there is no automated check on PRs — `pytest` runs only on developer mac
 - (e) Non-goals for this task: code signing, release automation, publishing installers. Those belong with T-39 — once it lands, a follow-up `build.yml` (tag-triggered) can invoke `build_exe.ps1` plus the installer compiler. Keep this task strictly scoped to PR gating.
 
 **Test surface:** the workflow itself — verify on a throwaway PR that (1) a deliberately broken test fails the CI run, (2) a lint violation fails the lint job, (3) the check is green on `master` after merge. No in-repo test changes required; this task is pure infra.
+
+---
+
+### T-43 · In-GUI search for players and old messages
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/gui/feed_panel.py`, `src/ow_chat_logger/gui/app.py`
+- **Completed:** —
+
+The live feed now shows many tightly-packed rows in a capped scrollback (`_MAX_ROWS = 500` in `feed_panel.py`). Finding a specific player's past line or a keyword from earlier in the session requires scroll-hunting — there is no in-app search. The persisted log files are reachable only via "Open Logs", which drops the user into a folder of CSVs rather than an in-context search over the running session.
+
+**Fix direction:** (a) Add a `CTkEntry` to the feed panel header with placeholder `Search player or message…`, styled to match existing inputs (`T.R_INPUT`, `T.BG_ELEV`, `T.BORDER_HAIRLINE`), positioned left of the count pill. (b) Track `_filter_text` on `FeedPanel`; on every keystroke walk `self._rows`, `pack_forget()` non-matching entries, and re-pack matches in order. Match predicate: case-insensitive substring in either the entry's `player` or `text` field; for `HeroRow` the hero name (`entry.text`) is already part of the searchable field. (c) Keep the filter sticky across new incoming messages — `append_message` must check the predicate before packing the new row. (d) Hide adjacent date separators that would otherwise float between two filtered-out rows; walk separators in the same pass and skip any that are not sandwiched between two visible message rows. (e) While a filter is active, swap the count pill text from `N` to `N/M` (visible/total) and keep its `T.ACCENT` coloring. (f) Bind `Ctrl+F` at the main window (`app.py`) to focus the feed search entry. (g) Render an `×` clear button inside the entry that resets the filter — add a `close` glyph to `icons.py` if one is not already there.
+
+**UI notes:**
+- The search entry belongs in the feed header, not the bottom bar: the bottom bar is for app-wide controls (chat colors, theme, settings) and search is a panel-local tool over the feed contents.
+- Preserve auto-scroll behavior: when a filter is active and a new matching message arrives, auto-scroll should still land at the bottom of the filtered view (call the same `_scroll_to_bottom` after filter-aware re-pack).
+- Do NOT introduce channel-filter chips in this task — the leading channel dot already gives that affordance and adding chips muddies scope. Note as a follow-up.
+
+**Test surface:** new `tests/test_feed_panel_search.py` — (1) a pure-logic helper that maps a sequence of `FeedEntry` and a filter string to the expected subset of players/messages, exercised without a Tk root; (2) an integration test that instantiates `FeedPanel` inside a hidden `CTk()` root, appends a fixed entry set, sets the filter, and asserts the exact list of visible rows via `winfo_ismapped()` plus the count-pill text format `N/M`. GUI integration tests are slower, so keep them focused on what the pure predicate cannot catch (pack/forget side effects, separator hiding, count-pill state).
+
+**Not in scope / follow-ups to open as separate tasks:**
+- Searching across persisted `chat_log.csv` / `hero_log.csv` files. That needs a different UI (results list with timestamps, file-streaming to avoid loading the whole session) and should not be conflated with filtering the live in-memory feed.
+- Regex / whole-word search modes.
+- Filter by channel (team-only / all-only) via toggle chips.
 
 ---
 
