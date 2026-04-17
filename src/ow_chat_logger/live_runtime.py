@@ -189,13 +189,14 @@ def should_run_ocr(mask: np.ndarray, config: dict[str, Any] | None = None) -> bo
     return int(np.count_nonzero(mask)) >= min_nonzero
 
 
-def extract_chat_lines_for_live(
+def _process_frame_for_live(
     screenshot: np.ndarray,
     ocr: OCRBackend,
-    ocr_profile: ResolvedOCRProfile | None = None,
-    metrics=None,
-) -> dict[str, list[str]]:
-    started = time.perf_counter()
+    *,
+    ocr_profile: ResolvedOCRProfile | None,
+    metrics,
+    started: float,
+) -> dict[str, Any]:
     profile = resolve_ocr_profile(dict(CONFIG)) if ocr_profile is None else ocr_profile
     debug_kwargs: dict[str, Any] = {"should_run_ocr": should_run_ocr, "pre_cropped": True}
     if ocr_profile is not None:
@@ -217,6 +218,23 @@ def extract_chat_lines_for_live(
             ocr_profile_name=profile.name,
             ocr_engine_id=profile.engine_id,
         )
+    return debug_data
+
+
+def extract_chat_lines_for_live(
+    screenshot: np.ndarray,
+    ocr: OCRBackend,
+    ocr_profile: ResolvedOCRProfile | None = None,
+    metrics=None,
+) -> dict[str, list[str]]:
+    started = time.perf_counter()
+    debug_data = _process_frame_for_live(
+        screenshot,
+        ocr,
+        ocr_profile=ocr_profile,
+        metrics=metrics,
+        started=started,
+    )
     return debug_data["raw_lines"]
 
 
@@ -279,27 +297,13 @@ def processing_worker(
                 continue
 
             started = time.perf_counter()
-            profile = resolve_ocr_profile(dict(CONFIG)) if ocr_profile is None else ocr_profile
-            debug_kwargs: dict[str, Any] = {"should_run_ocr": should_run_ocr, "pre_cropped": True}
-            if ocr_profile is not None:
-                debug_kwargs["ocr_profile"] = profile
-            debug_data = extract_chat_debug_data(screenshot, ocr, **debug_kwargs)
-            if metrics is not None:
-                timings = debug_data["timings"]
-                metrics.record_processed_frame(
-                    preprocess_seconds=timings["preprocess_seconds"],
-                    ocr_seconds=timings["ocr_seconds"],
-                    parse_seconds=timings["parse_seconds"],
-                    total_seconds=time.perf_counter() - started,
-                    team_skipped=debug_data["ocr_skipped"]["team"],
-                    all_skipped=debug_data["ocr_skipped"]["all"],
-                    team_boxes=len(debug_data["ocr_results"]["team"]),
-                    all_boxes=len(debug_data["ocr_results"]["all"]),
-                    team_lines=len(debug_data["raw_lines"]["team"]),
-                    all_lines=len(debug_data["raw_lines"]["all"]),
-                    ocr_profile_name=profile.name,
-                    ocr_engine_id=profile.engine_id,
-                )
+            debug_data = _process_frame_for_live(
+                screenshot,
+                ocr,
+                ocr_profile=ocr_profile,
+                metrics=metrics,
+                started=started,
+            )
             records = collect_normalized_records(
                 debug_data["raw_lines"],
                 team_buffer,

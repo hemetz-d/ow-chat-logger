@@ -20,7 +20,6 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-22 | `_effective_scale_factor` computed twice per resize | smell | 🔴 `open` | — |
 | T-25 | Inline error-case dict in `run_benchmark` duplicates `_unavailable_case` | smell | 🔴 `open` | — |
 | T-30 | Improve team-chat color masking for blue-on-blue scenarios | structural | 🔴 `open` | — |
-| T-31 | Duplicate frame-processing block in `live_runtime.py` | structural | 🔴 `open` | — |
 | T-32 | Stale "Related tasks" references in `KNOWN_FAILURES.md` | smell | 🔴 `open` | — |
 | T-33 | Undocumented regression failures for example_22/23/24 | smell | 🔴 `open` | — |
 | T-34 | Verify GUI chat-color settings propagate to all detection paths | structural | 🔴 `open` | — |
@@ -29,9 +28,11 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-38 | Detect "message contains embedded chat prefix" as a debug-snap anomaly | structural | 🔴 `open` | — |
 | T-39 | Extend build to produce a Windows installer | structural | 🔴 `open` | — |
 | T-40 | In-app update check / auto-updater for installed builds | structural | 🔴 `open` | — |
+| T-41 | Set up CI for PRs (tests + lint on GitHub Actions) | structural | 🔴 `open` | — |
 | T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🟢 `done` | 2026-04-17 |
 | T-37 | Move `debug_snaps/` and `analysis/` out of user `log_dir` | structural | 🟢 `done` | 2026-04-17 |
 | T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🟢 `done` | 2026-04-17 |
+| T-31 | Duplicate frame-processing block in `live_runtime.py` | structural | 🟢 `done` | 2026-04-17 |
 | T-07 | `DEFAULT_ALLOWLIST` ignores language config | structural | ⚫ `deferred` | — |
 | T-17 | T-15 false positive: legitimate names ending in `l` stripped when bracket is missing | bug | ⚫ `deferred` | — |
 | T-01 | Y-anchor drift in `reconstruct_lines` | bug | 🟢 `done` | 2026-04-03 |
@@ -76,20 +77,6 @@ In several screenshots (example_09, example_12, example_14) the team-chat text c
 **Fix direction:** Investigate the HSV ranges used for the team mask and compare against the failing screenshots. Consider: (a) widening the lightness range to catch slightly darker blue text; (b) adding a morphological close step before contour detection to bridge near-background-colored text; (c) adding a reject pass for out-of-range hues (e.g. pink/red) that are clearly not team-chat. This is a research-first task — inspect the debug mask images for example_09, example_12, and example_14 before changing thresholds.
 
 **Test surface:** `tests/test_regression_screenshots.py` — example_09, example_12, and example_14 are the direct regression targets.
-
----
-
-### T-31 · Duplicate frame-processing block in `live_runtime.py`
-- **Severity:** structural
-- **State:** 🔴 `open`
-- **File:** `src/ow_chat_logger/live_runtime.py:185-213`, `src/ow_chat_logger/live_runtime.py:273-294`
-- **Completed:** —
-
-`extract_chat_lines_for_live` and the inner body of `processing_worker` are near-identical: both resolve the profile on the hot path (`resolve_ocr_profile(dict(CONFIG))` if no profile was passed), build the same `debug_kwargs` (`should_run_ocr`, `pre_cropped=True`, optional `ocr_profile`), call `extract_chat_debug_data`, and emit the same multi-field `metrics.record_processed_frame(...)` payload. `extract_chat_lines_for_live` has no production call site — only tests reference it (`tests/test_live_runtime.py:253,286,324`). Any change to the frame-processing contract has to be made in two places.
-
-**Fix direction:** Extract the shared block into a helper (e.g. `process_frame_debug(screenshot, ocr, profile, metrics, started)`) and have both `extract_chat_lines_for_live` and `processing_worker` call it. Alternatively, if `extract_chat_lines_for_live` is genuinely dead, delete it and migrate its tests to exercise `processing_worker` via a synthetic frame queue.
-
-**Test surface:** `tests/test_live_runtime.py` — existing tests for `extract_chat_lines_for_live` become the contract test for the new helper.
 
 ---
 
