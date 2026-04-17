@@ -26,6 +26,7 @@ def load_ui_config() -> dict[str, Any]:
         "team_hsv_upper": list(cfg.get("team_hsv_upper", defaults["team_hsv_upper"])),
         "all_hsv_lower": list(cfg.get("all_hsv_lower", defaults["all_hsv_lower"])),
         "all_hsv_upper": list(cfg.get("all_hsv_upper", defaults["all_hsv_upper"])),
+        "ui_appearance_mode": cfg.get("ui_appearance_mode", "system"),
     }
 
 
@@ -51,6 +52,7 @@ def save_ui_config(data: dict[str, Any]) -> None:
         "team_hsv_upper",
         "all_hsv_lower",
         "all_hsv_upper",
+        "ui_appearance_mode",
     )
     for key in top_level_keys:
         if key in data:
