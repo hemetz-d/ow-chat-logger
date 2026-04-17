@@ -66,9 +66,10 @@ def test_get_app_paths_uses_packaged_output_dir_on_frozen_windows(monkeypatch):
     assert paths.log_dir == exe_dir / "OW Chat Logger Data"
     assert paths.chat_log == paths.log_dir / "chat_log.csv"
     assert paths.hero_log == paths.log_dir / "hero_log.csv"
-    assert paths.snap_dir == paths.log_dir / "debug_snaps"
+    assert paths.snap_dir == paths.appdata_dir / "dev" / "debug_snaps"
     assert paths.crash_log == appdata / "ow-chat-logger" / "crash.log"
     assert paths.config_path == appdata / "ow-chat-logger" / "config.json"
+    assert not paths.snap_dir.exists(), "snap_dir should be created lazily on first write"
 
 
 def test_get_app_paths_keeps_non_packaged_default_behavior(monkeypatch):

@@ -440,12 +440,11 @@ def get_app_paths(*, ensure_exists: bool = True) -> AppPaths:
         chat_log=log_dir / "chat_log.csv",
         hero_log=log_dir / "hero_log.csv",
         crash_log=appdata_dir / "crash.log",
-        snap_dir=log_dir / "debug_snaps",
+        snap_dir=appdata_dir / "dev" / "debug_snaps",
     )
     if ensure_exists:
         paths.appdata_dir.mkdir(parents=True, exist_ok=True)
         paths.log_dir.mkdir(parents=True, exist_ok=True)
-        paths.snap_dir.mkdir(parents=True, exist_ok=True)
     _cached_paths = paths
     return _cached_paths
 
