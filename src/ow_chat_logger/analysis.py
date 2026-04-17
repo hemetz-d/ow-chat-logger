@@ -75,7 +75,7 @@ def load_rgb_image(path: Path) -> np.ndarray:
 
 def default_analysis_output_dir() -> Path:
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    return get_app_paths().log_dir / "analysis" / timestamp
+    return get_app_paths().appdata_dir / "dev" / "analysis" / timestamp
 
 
 def analysis_report_paths(output_dir: Path) -> dict[str, Path]:
