@@ -243,6 +243,7 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     "metrics_log_path": None,
     "live_message_confirmations_required": 2,
     "min_mask_nonzero_pixels_for_ocr": 24,
+    "debug_snaps_on_anomaly": False,
     "max_remembered": 1000,
     "ocr": {
         "default_profile": DEFAULT_OCR_PROFILE,

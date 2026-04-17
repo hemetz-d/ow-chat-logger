@@ -13,6 +13,13 @@ import pyautogui
 
 from ow_chat_logger.buffer import MessageBuffer
 from ow_chat_logger.config import CONFIG, get_app_paths, resolve_ocr_profile
+from ow_chat_logger.debug_snaps import (
+    build_allowed_charset,
+    contains_suspicious_characters,
+    has_bboxes_without_lines,
+    save_anomaly_snapshot,
+    suspicious_chars_in,
+)
 from ow_chat_logger.deduplication import DuplicateFilter
 from ow_chat_logger.logger import MessageLogger, colorize_console_text
 from ow_chat_logger.message_processing import (
@@ -259,6 +266,7 @@ def processing_worker(
     confirmation_gate = LiveRecordConfirmationGate(
         CONFIG.get("live_message_confirmations_required", 2)
     )
+    allowed_charset = build_allowed_charset(CONFIG.get("languages") or [])
 
     try:
         while not stop_event.is_set() or not frame_queue.empty():
@@ -300,6 +308,36 @@ def processing_worker(
                 raw_line_prefix_evidence_by_channel=debug_data.get("raw_line_prefix_evidence"),
                 raw_continuation_y_gaps=debug_data.get("raw_continuation_y_gaps"),
             )
+            if CONFIG.get("debug_snaps_on_anomaly"):
+                try:
+                    snap_dir = get_app_paths().snap_dir
+                    if has_bboxes_without_lines(debug_data):
+                        save_anomaly_snapshot(
+                            debug_data,
+                            snap_dir,
+                            reason="bboxes_without_lines",
+                            details={
+                                "ocr_box_counts": {
+                                    ch: len(debug_data["ocr_results"][ch])
+                                    for ch in ("team", "all")
+                                },
+                            },
+                        )
+                    for record in records:
+                        if contains_suspicious_characters(record, allowed_charset=allowed_charset):
+                            save_anomaly_snapshot(
+                                debug_data,
+                                snap_dir,
+                                reason="suspicious_chars",
+                                details={
+                                    "chat_type": record.get("chat_type"),
+                                    "player": record.get("player"),
+                                    "msg": record.get("msg"),
+                                    "chars": suspicious_chars_in(record.get("msg", ""), allowed_charset),
+                                },
+                            )
+                except Exception:
+                    pass
             for record in confirmation_gate.accept_frame(records):
                 log_normalized_record(
                     record,
