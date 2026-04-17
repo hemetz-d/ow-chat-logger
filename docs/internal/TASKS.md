@@ -30,7 +30,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-39 | Extend build to produce a Windows installer | structural | 🔴 `open` | — |
 | T-40 | In-app update check / auto-updater for installed builds | structural | 🔴 `open` | — |
 | T-41 | Set up CI for PRs (tests + lint on GitHub Actions) | structural | 🔴 `open` | — |
-| T-43 | In-GUI search for players and old messages | structural | 🔴 `open` | — |
+| T-43 | Search the persisted chat log for players and past messages | structural | 🔴 `open` | — |
 | T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🟢 `done` | 2026-04-17 |
 | T-37 | Move `debug_snaps/` and `analysis/` out of user `log_dir` | structural | 🟢 `done` | 2026-04-17 |
 | T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🟢 `done` | 2026-04-17 |
@@ -236,27 +236,42 @@ Today there is no automated check on PRs — `pytest` runs only on developer mac
 
 ---
 
-### T-43 · In-GUI search for players and old messages
+### T-43 · Search the persisted chat log for players and past messages
 - **Severity:** structural
 - **State:** 🔴 `open`
-- **File:** `src/ow_chat_logger/gui/feed_panel.py`, `src/ow_chat_logger/gui/app.py`
+- **File:** new `src/ow_chat_logger/log_search.py` (pure search over CSVs), new `src/ow_chat_logger/gui/search_panel.py` (results UI), `src/ow_chat_logger/gui/app.py` (entry point + keybind), `src/ow_chat_logger/config.py` (reuse `get_app_paths().chat_log` / `.hero_log`)
 - **Completed:** —
 
-The live feed now shows many tightly-packed rows in a capped scrollback (`_MAX_ROWS = 500` in `feed_panel.py`). Finding a specific player's past line or a keyword from earlier in the session requires scroll-hunting — there is no in-app search. The persisted log files are reachable only via "Open Logs", which drops the user into a folder of CSVs rather than an in-context search over the running session.
+A single Overwatch match is short and the live feed fits comfortably in memory — a user already sees and remembers what is on screen, so filtering the live rows adds little value. What is actually valuable is recalling a specific player's past lines or a keyword from an earlier session, across the history that persists to `%APPDATA%/ow-chat-logger/chat_log.csv` and `hero_log.csv`. Today that history is reachable only via "Open Logs", which dumps the user into a folder of CSVs — there is no in-app search over it. This task adds that search. It explicitly does **not** add filtering to the live feed panel; the live feed stays as-is.
 
-**Fix direction:** (a) Add a `CTkEntry` to the feed panel header with placeholder `Search player or message…`, styled to match existing inputs (`T.R_INPUT`, `T.BG_ELEV`, `T.BORDER_HAIRLINE`), positioned left of the count pill. (b) Track `_filter_text` on `FeedPanel`; on every keystroke walk `self._rows`, `pack_forget()` non-matching entries, and re-pack matches in order. Match predicate: case-insensitive substring in either the entry's `player` or `text` field; for `HeroRow` the hero name (`entry.text`) is already part of the searchable field. (c) Keep the filter sticky across new incoming messages — `append_message` must check the predicate before packing the new row. (d) Hide adjacent date separators that would otherwise float between two filtered-out rows; walk separators in the same pass and skip any that are not sandwiched between two visible message rows. (e) While a filter is active, swap the count pill text from `N` to `N/M` (visible/total) and keep its `T.ACCENT` coloring. (f) Bind `Ctrl+F` at the main window (`app.py`) to focus the feed search entry. (g) Render an `×` clear button inside the entry that resets the filter — add a `close` glyph to `icons.py` if one is not already there.
+**Data shape:** `MessageLogger` (`src/ow_chat_logger/logger.py`) writes one append-only CSV per stream: `chat_log.csv` rows are `[timestamp, player, text, chat_type]`, `hero_log.csv` rows are `[timestamp, player, text]` (the hero name is in `text`). No rotation — both files grow for the lifetime of the install, potentially tens of thousands of rows. The live session has one of these files open for append under `MessageLogger._lock`; the search path must read a second, independent file handle (readers do not need the lock — csv append with explicit flush is safe to interleave with a reader, and a search occasionally missing the very latest line is acceptable).
+
+**Fix direction:**
+- (a) **Pure search core** — new `src/ow_chat_logger/log_search.py` exposing `search_logs(query, *, chat_log_path, hero_log_path, channel_filter=None, limit=500) -> list[SearchResult]`. `SearchResult` is a dataclass with `timestamp, player, text, source` where `source ∈ {"team", "all", "hero"}`. Implementation: stream both CSVs with `csv.reader`, skip rows whose player/text doesn't contain the (case-insensitive) query substring, assemble results sorted newest-first, cap at `limit`. No pandas, no pre-loading — `csv.reader` over a file handle is fast enough for tens of thousands of rows and keeps memory bounded. This module has zero GUI dependencies and is fully unit-testable.
+- (b) **Search panel UI** — new `src/ow_chat_logger/gui/search_panel.py` defining a `SearchPanel(CTkToplevel)` modal: single-column layout, top bar with a `CTkEntry` (placeholder `Search player or message…`) plus an optional `CTkSegmentedButton` channel filter (`All`, `Team`, `All chat`, `Hero`), body is a `CTkScrollableFrame` of compact result rows, footer shows `N results` / `limit reached — refine query`. Result row format: `[timestamp muted] [channel dot] [player bold] [message, secondary]` — reuse the dot color convention from `feed_panel.MessageRow` so the visual language matches. Debounce typing by ~150 ms before running the search so a user typing "reinhardt" triggers one scan, not eight. Escape closes the modal; Enter moves focus to the first result for keyboard browsing (no navigation action needed beyond that).
+- (c) **Entry point** — wire a search icon button into the feed panel header (right side, left of the message count pill). Tooltip/labelless — reuse the `search` glyph already in `icons.py`. Clicking opens the modal. Bind `Ctrl+F` at the main-window level (`app.py`) to open/focus the same modal. Do not add a search input to the feed header — search is not a live-feed operation.
+- (d) **Path resolution** — the search reads `get_app_paths().chat_log` and `get_app_paths().hero_log` on every query. If the file does not exist (fresh install, no session run), treat it as an empty source (return []). Do not cache file content — users often search mid-session and expect recent lines to show up.
+- (e) **No writes** — the search path never opens the CSVs for write. If the files get corrupted or truncated at shutdown, the search must degrade gracefully: wrap the per-row loop in a try/except around `csv.Error` and continue past malformed rows, count skips in a debug log line but do not surface to the user.
 
 **UI notes:**
-- The search entry belongs in the feed header, not the bottom bar: the bottom bar is for app-wide controls (chat colors, theme, settings) and search is a panel-local tool over the feed contents.
-- Preserve auto-scroll behavior: when a filter is active and a new matching message arrives, auto-scroll should still land at the bottom of the filtered view (call the same `_scroll_to_bottom` after filter-aware re-pack).
-- Do NOT introduce channel-filter chips in this task — the leading channel dot already gives that affordance and adding chips muddies scope. Note as a follow-up.
+- Modal (Toplevel), not a panel split or an overlay on the feed. The feed stays visible underneath; a modal is the minimum disruption for a look-up-and-close flow.
+- Results should be selectable text (so the user can copy a username/message), which means using `CTkLabel` with mouse-drag text selection — tk's stock `Label` does not support that. Simplest: render each result as a read-only `CTkEntry` or a flat `tk.Text` line. Accept either; hard requirement is only "user can select and copy".
+- Do NOT try to jump the live feed to the matched message. History rows predate the current session and no longer exist in the feed; a "jump to" affordance would be misleading.
 
-**Test surface:** new `tests/test_feed_panel_search.py` — (1) a pure-logic helper that maps a sequence of `FeedEntry` and a filter string to the expected subset of players/messages, exercised without a Tk root; (2) an integration test that instantiates `FeedPanel` inside a hidden `CTk()` root, appends a fixed entry set, sets the filter, and asserts the exact list of visible rows via `winfo_ismapped()` plus the count-pill text format `N/M`. GUI integration tests are slower, so keep them focused on what the pure predicate cannot catch (pack/forget side effects, separator hiding, count-pill state).
+**Test surface:** new `tests/test_log_search.py`
+- Fixture: write two tmp CSVs with a known mix of team/all/hero rows (20–30 rows total, varied players and keywords, including unicode and OCR-like lookalikes).
+- Assert case-insensitive substring match on player, on message, and on both fields simultaneously.
+- Assert channel filter restricts results to the selected source.
+- Assert newest-first ordering across both files (a recent hero row should come before an older team row).
+- Assert `limit` truncates and the return value signals "more were available" (e.g. a second return value `truncated: bool`).
+- Assert malformed CSV rows are skipped, not fatal.
+- Assert missing log files return an empty list, not an exception.
 
-**Not in scope / follow-ups to open as separate tasks:**
-- Searching across persisted `chat_log.csv` / `hero_log.csv` files. That needs a different UI (results list with timestamps, file-streaming to avoid loading the whole session) and should not be conflated with filtering the live in-memory feed.
-- Regex / whole-word search modes.
-- Filter by channel (team-only / all-only) via toggle chips.
+**Not in scope / follow-ups:**
+- Regex / whole-word / exact-phrase search modes.
+- Persistent search history (last N queries remembered across launches).
+- Index-backed search (SQLite FTS) — premature until real-world CSV sizes actually become slow; `csv.reader` handles tens of thousands of rows in well under a second on realistic hardware.
+- Any live-feed filtering. The earlier draft of this task proposed filtering the live `FeedPanel` rows; that was explicitly dropped in the rework — sessions are short, the visible feed is already small, and live filter adds cost without value.
 
 ---
 
