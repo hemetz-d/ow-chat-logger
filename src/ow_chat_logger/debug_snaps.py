@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import re
 import string
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -64,6 +65,27 @@ def contains_suspicious_characters(
     if not any(c.isalpha() for c in msg):
         return False
     return any(c not in allowed_charset for c in msg)
+
+
+# Matches a bracketed `[name]` token embedded inside a message — i.e. preceded
+# by non-whitespace and followed by more content. Fires on OCR-parser merges
+# like `"J: hello [Makiko] hey"`, where two chat lines were welded into one
+# record. Isolated trailing mentions (`"see [Makiko]"`) deliberately do not
+# match: they lack the trailing content that indicates a second welded message.
+_EMBEDDED_PREFIX_PATTERN = re.compile(
+    r"\S\s*\[[^\[\]]{2,30}\]\s*:?\s*\S"
+)
+
+
+def message_contains_embedded_prefix(
+    record: Mapping[str, Any],
+    *,
+    prefix_regex: re.Pattern[str] = _EMBEDDED_PREFIX_PATTERN,
+) -> re.Match[str] | None:
+    if record.get("category") != "standard":
+        return None
+    msg = record.get("msg", "") or ""
+    return prefix_regex.search(msg)
 
 
 def _timestamp_slug(now: datetime.datetime | None) -> str:

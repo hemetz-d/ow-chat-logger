@@ -17,6 +17,7 @@ from ow_chat_logger.debug_snaps import (
     build_allowed_charset,
     contains_suspicious_characters,
     has_bboxes_without_lines,
+    message_contains_embedded_prefix,
     save_anomaly_snapshot,
     suspicious_chars_in,
 )
@@ -358,6 +359,20 @@ def processing_worker(
                                     "player": record.get("player"),
                                     "msg": record.get("msg"),
                                     "chars": suspicious_chars_in(record.get("msg", ""), allowed_charset),
+                                },
+                            )
+                        embedded = message_contains_embedded_prefix(record)
+                        if embedded is not None:
+                            save_anomaly_snapshot(
+                                debug_data,
+                                snap_dir,
+                                reason="embedded_prefix",
+                                details={
+                                    "chat_type": record.get("chat_type"),
+                                    "player": record.get("player"),
+                                    "msg": record.get("msg"),
+                                    "match_span": list(embedded.span()),
+                                    "matched_text": embedded.group(0),
                                 },
                             )
                 except Exception:
