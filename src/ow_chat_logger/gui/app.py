@@ -316,13 +316,13 @@ class OWChatLoggerApp(ctk.CTk):
             f"{chat_key}_hsv_lower": lower,
             f"{chat_key}_hsv_upper": upper,
         })
-        from ow_chat_logger.config import reset_config
-        reset_config()
+        self._bridge.reload_config()
         self._swatches[chat_key].configure(fg_color=hex_color, hover_color=hex_color)
         self._feed_panel.refresh_chat_colors()
 
     def _refresh_swatches(self) -> None:
         """Recompute swatch colors from saved config (called after settings modal save)."""
+        self._bridge.reload_config()
         cfg = load_ui_config()
         for chat_key in ("team", "all"):
             try:
@@ -434,6 +434,12 @@ class OWChatLoggerApp(ctk.CTk):
                 self._apply_status_event(self._bridge.status_queue.get_nowait())
         except queue.Empty:
             pass
+
+        while True:
+            notice = self._bridge.drain_reload_notice()
+            if notice is None:
+                break
+            self._apply_status_event(notice)
 
         exc = self._bridge.drain_error()
         if exc:

@@ -280,6 +280,8 @@ def processing_worker(
     chat_logger,
     hero_logger,
     metrics=None,
+    reload_event: threading.Event | None = None,
+    reload_notice: Queue | None = None,
 ) -> None:
     confirmation_gate = LiveRecordConfirmationGate(
         CONFIG.get("live_message_confirmations_required", 2)
@@ -295,6 +297,24 @@ def processing_worker(
                     screenshot = frame_queue.get(timeout=0.1)
             except Empty:
                 continue
+
+            if reload_event is not None and reload_event.is_set():
+                reload_event.clear()
+                if ocr_profile is not None:
+                    try:
+                        new_profile = resolve_ocr_profile(dict(CONFIG))
+                    except Exception as exc:
+                        if reload_notice is not None:
+                            reload_notice.put(("error", f"Config reload failed: {exc}"))
+                    else:
+                        # Engine or language changes would need the OCR backend
+                        # rebuilt; that requires a full restart (Stop → Start).
+                        # The GUI already warns about this in the save dialog.
+                        if (
+                            new_profile.engine_id == ocr_profile.engine_id
+                            and list(new_profile.languages) == list(ocr_profile.languages)
+                        ):
+                            ocr_profile = new_profile
 
             started = time.perf_counter()
             debug_data = _process_frame_for_live(
@@ -389,10 +409,9 @@ def run_live_logger(
     metrics_log_path_override: str | None = None,
     ocr_profile_override: str | None = None,
 ) -> int:
-    # NOTE: the OCR profile (including its HSV ranges) is resolved once here and
-    # passed frozen to every frame. Config edits made through the GUI while a
-    # live session is running will not take effect until the session restarts.
-    # See TASKS.md T-42 for the follow-up that wires in a reload path.
+    # The CLI runner resolves the profile once and does not listen for config
+    # reloads — there is no GUI Apply here. The GUI path (BackendBridge) wires a
+    # reload_event into processing_worker so HSV/pipeline edits apply live.
     profile = resolve_ocr_profile(dict(CONFIG), ocr_profile_override)
     ocr = build_ocr_backend(profile)
 
