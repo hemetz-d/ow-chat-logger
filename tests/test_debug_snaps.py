@@ -10,6 +10,7 @@ from ow_chat_logger.debug_snaps import (
     build_allowed_charset,
     contains_suspicious_characters,
     has_bboxes_without_lines,
+    message_contains_embedded_prefix,
     save_anomaly_snapshot,
     suspicious_chars_in,
 )
@@ -83,6 +84,37 @@ def test_contains_suspicious_characters_ignores_non_chat_records():
     charset = build_allowed_charset(["en"])
     record = {"category": "hero", "msg": "• Tracer"}
     assert contains_suspicious_characters(record, allowed_charset=charset) is False
+
+
+def test_message_contains_embedded_prefix_fires_on_joebar_example():
+    # Real production observation: `Joebar: J: hello [Makiko] hey` was logged
+    # as a single record. The embedded `[Makiko]` flags the upstream merge.
+    record = {"category": "standard", "player": "Joebar", "msg": "J: hello [Makiko] hey"}
+    match = message_contains_embedded_prefix(record)
+    assert match is not None
+    assert "[Makiko]" in match.group(0)
+
+
+def test_message_contains_embedded_prefix_fires_on_bracketed_colon_variant():
+    record = {"category": "standard", "player": "Alice", "msg": "foo [Bob]: bar"}
+    assert message_contains_embedded_prefix(record) is not None
+
+
+def test_message_contains_embedded_prefix_ignores_at_mention():
+    # `@Joebar` is not a chat prefix; must not fire.
+    record = {"category": "standard", "player": "Alice", "msg": "tell @Joebar hi"}
+    assert message_contains_embedded_prefix(record) is None
+
+
+def test_message_contains_embedded_prefix_ignores_trailing_name_reference():
+    # A bracket that ends the message isn't a welded second line.
+    record = {"category": "standard", "player": "Alice", "msg": "see [Makiko]"}
+    assert message_contains_embedded_prefix(record) is None
+
+
+def test_message_contains_embedded_prefix_ignores_hero_category():
+    record = {"category": "hero", "player": "Alice", "msg": "J: hello [Makiko] hey"}
+    assert message_contains_embedded_prefix(record) is None
 
 
 def test_suspicious_chars_in_returns_unique_offenders_in_order():
