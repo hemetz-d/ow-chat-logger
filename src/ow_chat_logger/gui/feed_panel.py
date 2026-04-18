@@ -15,6 +15,7 @@ _MAX_ROWS = 500
 
 # ── Message row widget ────────────────────────────────────────────────────────
 
+
 class MessageRow(ctk.CTkFrame):
     """Compact chat row: channel dot, player, message (wraps), timestamp."""
 
@@ -80,9 +81,7 @@ class MessageRow(ctk.CTkFrame):
         ).grid(row=0, column=2, sticky="ne", padx=(10, 14), pady=3)
 
     def set_dot_color(self, color: str | None) -> None:
-        self._dot.configure(
-            text_color=color if color else T.pick(T.TEXT_DIM)
-        )
+        self._dot.configure(text_color=color if color else T.pick(T.TEXT_DIM))
 
     @property
     def chat_type(self) -> str:
@@ -99,6 +98,7 @@ class MessageRow(ctk.CTkFrame):
 
 
 # ── Hero event row — stands out from real chat ────────────────────────────────
+
 
 class HeroRow(ctk.CTkFrame):
     """Hero-pick log event — deliberately not styled like chat."""
@@ -145,15 +145,14 @@ def _load_chat_colors() -> dict[str, str]:
     out: dict[str, str] = {}
     for key in ("team", "all"):
         try:
-            out[key] = hsv_bounds_to_hex(
-                cfg[f"{key}_hsv_lower"], cfg[f"{key}_hsv_upper"]
-            )
+            out[key] = hsv_bounds_to_hex(cfg[f"{key}_hsv_lower"], cfg[f"{key}_hsv_upper"])
         except Exception:
             out[key] = T.pick(T.CHAT_TEAM if key == "team" else T.CHAT_ALL)
     return out
 
 
 # ── Feed panel ────────────────────────────────────────────────────────────────
+
 
 class FeedPanel(ctk.CTkFrame):
     def __init__(self, parent: tk.Widget) -> None:
@@ -313,9 +312,7 @@ class FeedPanel(ctk.CTkFrame):
 
         # Hairline divider above this row (except for the first row)
         if self._rows:
-            divider = ctk.CTkFrame(
-                self._list, height=1, fg_color=T.BORDER_FAINT, corner_radius=0
-            )
+            divider = ctk.CTkFrame(self._list, height=1, fg_color=T.BORDER_FAINT, corner_radius=0)
             divider.pack(fill="x", padx=16)
             self._rows.append(divider)
 
@@ -396,5 +393,3 @@ class FeedPanel(ctk.CTkFrame):
             return
         self._maybe_show_jump_pill()
         self.after(400, self._poll_scroll)
-
-

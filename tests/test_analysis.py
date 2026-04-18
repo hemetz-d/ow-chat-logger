@@ -26,8 +26,12 @@ def test_run_analyze_writes_report_and_masks(monkeypatch, local_tmp_dir):
     rgb_image = np.zeros((2, 2, 3), dtype=np.uint8)
 
     monkeypatch.setattr("ow_chat_logger.analysis.load_rgb_image", lambda path: rgb_image)
-    monkeypatch.setattr("ow_chat_logger.analysis.resolve_ocr_profile", lambda *args, **kwargs: _fake_profile())
-    monkeypatch.setattr("ow_chat_logger.analysis.build_ocr_backend", lambda *args, **kwargs: object())
+    monkeypatch.setattr(
+        "ow_chat_logger.analysis.resolve_ocr_profile", lambda *args, **kwargs: _fake_profile()
+    )
+    monkeypatch.setattr(
+        "ow_chat_logger.analysis.build_ocr_backend", lambda *args, **kwargs: object()
+    )
     monkeypatch.setattr(
         "ow_chat_logger.analysis.extract_chat_debug_data",
         lambda image, ocr, ocr_profile=None, config_overrides=None: {
@@ -371,8 +375,12 @@ def test_run_analyze_report_matches_existing_regression_expectation(monkeypatch,
         "ow_chat_logger.analysis.load_rgb_image",
         lambda path: np.zeros((1, 1, 3), dtype=np.uint8),
     )
-    monkeypatch.setattr("ow_chat_logger.analysis.resolve_ocr_profile", lambda *args, **kwargs: _fake_profile())
-    monkeypatch.setattr("ow_chat_logger.analysis.build_ocr_backend", lambda *args, **kwargs: object())
+    monkeypatch.setattr(
+        "ow_chat_logger.analysis.resolve_ocr_profile", lambda *args, **kwargs: _fake_profile()
+    )
+    monkeypatch.setattr(
+        "ow_chat_logger.analysis.build_ocr_backend", lambda *args, **kwargs: object()
+    )
     monkeypatch.setattr(
         "ow_chat_logger.analysis.extract_chat_debug_data",
         lambda image, ocr, ocr_profile=None, config_overrides=None: {

@@ -88,6 +88,7 @@ def clean_mask_steps(
 def clean_mask(mask, config: Optional[Mapping[str, Any]] = None):
     return clean_mask_steps(mask, config)[-1][1]
 
+
 # option with less processing (just upscaling)
 # def clean_mask(mask):
 #     mask = cv2.resize(
@@ -99,16 +100,18 @@ def clean_mask(mask, config: Optional[Mapping[str, Any]] = None):
 #     )
 #     return mask
 
+
 def _bbox_center_y(bbox) -> float:
     ys = [point[1] for point in bbox]
     return (min(ys) + max(ys)) / 2.0
 
 
 def _line_max_h(line) -> float:
-    return max(
-        (max(float(p[1]) for p in bbox) - min(float(p[1]) for p in bbox))
-        for bbox, _ in line
-    ) if line else 0.0
+    return (
+        max((max(float(p[1]) for p in bbox) - min(float(p[1]) for p in bbox)) for bbox, _ in line)
+        if line
+        else 0.0
+    )
 
 
 def _line_center_y(line) -> float:
@@ -236,10 +239,7 @@ def reconstruct_lines_with_ys(
 ) -> tuple[list[tuple[str, float]], float]:
     """Like reconstruct_lines but also returns each line's Y and the median line height."""
     line_data, median_line_h = _reconstruct(results, config)
-    return [
-        (str(line["text"]), float(line["center_y"]))
-        for line in line_data
-    ], median_line_h
+    return [(str(line["text"]), float(line["center_y"])) for line in line_data], median_line_h
 
 
 def compute_prefix_evidence_for_lines(
@@ -260,7 +260,9 @@ def compute_prefix_evidence_for_lines(
         float(cfg.get("missing_prefix_max_largest_component_fraction", 0.8)),
         0.0,
     )
-    min_line_height_fraction = max(float(cfg.get("missing_prefix_min_line_height_fraction", 0.65)), 0.0)
+    min_line_height_fraction = max(
+        float(cfg.get("missing_prefix_min_line_height_fraction", 0.65)), 0.0
+    )
     max_line_height_fraction = max(
         float(cfg.get("missing_prefix_max_line_height_fraction", 1.6)),
         min_line_height_fraction,
@@ -293,7 +295,7 @@ def compute_prefix_evidence_for_lines(
         if not (saw_open and saw_close):
             return None
 
-        for segment in segments[len(prefix_segments):]:
+        for segment in segments[len(prefix_segments) :]:
             if any(char.isalnum() for char in str(segment["text"])):
                 body_segment = segment
                 break
@@ -335,16 +337,19 @@ def compute_prefix_evidence_for_lines(
         line_height = float(line.get("line_height", bottom_y - top_y))
         line_height_ratio = (line_height / median_line_h) if median_line_h > 0.0 else None
         within_line_height_range = (
-            line_height_ratio is not None
-            and min_line_height_fraction <= line_height_ratio <= max_line_height_fraction
-        ) if median_line_h > 0.0 else True
+            (
+                line_height_ratio is not None
+                and min_line_height_fraction <= line_height_ratio <= max_line_height_fraction
+            )
+            if median_line_h > 0.0
+            else True
+        )
 
         prefix_start_x = layout["prefix_start_x"]
         body_start_range = layout["body_start_range"]
-        within_body_start_range = (
-            body_start_range is not None
-            and float(body_start_range[0]) <= first_box_x <= float(body_start_range[1])
-        )
+        within_body_start_range = body_start_range is not None and float(
+            body_start_range[0]
+        ) <= first_box_x <= float(body_start_range[1])
 
         x1 = 0
         x2 = 0
@@ -373,8 +378,8 @@ def compute_prefix_evidence_for_lines(
                 probe_component_count = len(component_areas)
                 largest_area = max(component_areas) if component_areas else 0
                 probe_largest_component_fraction = (
-                    largest_area / probe_nonzero
-                ) if probe_nonzero else 0.0
+                    (largest_area / probe_nonzero) if probe_nonzero else 0.0
+                )
 
         has_missing_prefix_evidence = (
             classification["category"] == "continuation"

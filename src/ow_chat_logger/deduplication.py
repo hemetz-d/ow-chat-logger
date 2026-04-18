@@ -1,5 +1,6 @@
 from collections import deque
 
+
 class DuplicateFilter:
     def __init__(self, max_remembered):
         # deque(maxlen=0) breaks eviction (popleft on empty); clamp for safety.

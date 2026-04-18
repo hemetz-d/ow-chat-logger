@@ -9,6 +9,19 @@ from ow_chat_logger.config import CONFIG, resolve_log_dir
 from ow_chat_logger.ocr import ResolvedOCRProfile
 
 
+@pytest.fixture(autouse=True)
+def _reset_config_cache_between_tests():
+    """Several tests in this module populate `_cached_config` with a packaged-
+    mode config (monkeypatched `sys.frozen=True`, non-windows profiles stripped).
+    `monkeypatch` restores `sys.frozen` on teardown, but the module-global cache
+    it populated persists and breaks unrelated downstream tests. Reset it.
+    """
+    yield
+    import ow_chat_logger.config as cfg_module
+
+    cfg_module.reset_config()
+
+
 def test_resolve_log_dir_expanduser(monkeypatch):
     home = Path(__file__).resolve().parent / "_tmp_home"
     home.mkdir(parents=True, exist_ok=True)

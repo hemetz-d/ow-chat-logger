@@ -124,14 +124,8 @@ def extract_chat_debug_data(
     ocr_seconds = time.perf_counter() - ocr_started
 
     parse_started = time.perf_counter()
-    reconstructed = {
-        key: reconstruct_line_data(ocr_results[key], cfg)
-        for key in ("team", "all")
-    }
-    out = {
-        key: [str(line["text"]) for line in lines]
-        for key, (lines, _) in reconstructed.items()
-    }
+    reconstructed = {key: reconstruct_line_data(ocr_results[key], cfg) for key in ("team", "all")}
+    out = {key: [str(line["text"]) for line in lines] for key, (lines, _) in reconstructed.items()}
     raw_line_ys = {
         key: [float(line["center_y"]) for line in lines]
         for key, (lines, _) in reconstructed.items()
@@ -140,14 +134,8 @@ def extract_chat_debug_data(
         key: compute_prefix_evidence_for_lines(masks[key], lines, median_h, cfg)
         for key, (lines, median_h) in reconstructed.items()
     }
-    raw_channel_layouts = {
-        key: layout
-        for key, (layout, _) in prefix_analysis.items()
-    }
-    raw_line_prefix_evidence = {
-        key: evidence
-        for key, (_, evidence) in prefix_analysis.items()
-    }
+    raw_channel_layouts = {key: layout for key, (layout, _) in prefix_analysis.items()}
+    raw_line_prefix_evidence = {key: evidence for key, (_, evidence) in prefix_analysis.items()}
 
     gap_factor = cfg.get("max_continuation_y_gap_factor")
     raw_continuation_y_gaps: dict[str, float | None] = {

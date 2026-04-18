@@ -49,9 +49,10 @@ def _hsv_synthetic_frame() -> np.ndarray:
     """
     hsv = np.zeros((1, 3, 3), dtype=np.uint8)
     hsv[0, 0] = (100, 220, 200)  # inside the default team range
-    hsv[0, 1] = (10, 220, 200)   # inside the default all range
+    hsv[0, 1] = (10, 220, 200)  # inside the default all range
     hsv[0, 2] = (150, 220, 200)  # outside both default ranges (magenta-ish)
     import cv2
+
     return cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
 
 
@@ -70,6 +71,7 @@ class _StubOCR:
 # ──────────────────────────────────────────────────────────────────────────────
 # Link 1: create_chat_masks reads HSV directly from the cfg it is handed
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def test_create_chat_masks_reads_hsv_from_cfg_dict():
     frame = _hsv_synthetic_frame()
@@ -97,6 +99,7 @@ def test_create_chat_masks_reads_hsv_from_cfg_dict():
 # ──────────────────────────────────────────────────────────────────────────────
 # Link 2: extract_chat_debug_data honors overrides that mutate HSV keys
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.parametrize("channel", ["team", "all"])
 def test_extract_chat_debug_data_respects_hsv_overrides(channel: str):
@@ -135,6 +138,7 @@ def test_extract_chat_debug_data_respects_hsv_overrides(channel: str):
 # Link 3: legacy flat HSV keys in user config propagate into profile.pipeline
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.parametrize("key", _HSV_KEYS)
 def test_flat_hsv_keys_propagate_into_profile_pipeline(key: str):
     synthetic = [7, 11, 13] if key.endswith("_lower") else [170, 250, 240]
@@ -168,6 +172,7 @@ def test_flat_hsv_keys_ignored_when_user_sets_explicit_ocr_profiles():
 # config-file round trip. This is the test the user asked for explicitly:
 # "make sure the color pickers in the ui affect the values".
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def test_gui_hsv_write_reaches_create_chat_masks(tmp_path: Path, monkeypatch):
     config_path = tmp_path / "config.json"

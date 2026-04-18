@@ -4,7 +4,6 @@ import datetime
 import json
 
 import numpy as np
-import pytest
 
 from ow_chat_logger.debug_snaps import (
     build_allowed_charset,

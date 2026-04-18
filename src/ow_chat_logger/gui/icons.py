@@ -8,6 +8,7 @@ Keep the icon set small and consistent — 1.5px stroke at logical size, round
 caps, no fills. Designed to pair with the Apple/Lucide aesthetic already used
 in theme.py.
 """
+
 from __future__ import annotations
 
 from typing import Callable
@@ -20,12 +21,14 @@ _CACHE: dict[tuple[str, int], "ctk.CTkImage | None"] = {}
 def _with_pil(fn: Callable):
     """Decorator that returns None if PIL is unavailable — keeps icon calls
     safe at import time on minimal environments."""
+
     def wrapper(*args, **kwargs):
         try:
             from PIL import Image  # noqa: F401
         except Exception:
             return None
         return fn(*args, **kwargs)
+
     return wrapper
 
 
@@ -36,18 +39,22 @@ def _stroke_px(size: int) -> int:
 
 def _blank(size: int):
     from PIL import Image
+
     return Image.new("RGBA", (size * 4, size * 4), (0, 0, 0, 0))
 
 
 def _downscale(img, size: int):
     from PIL import Image
+
     return img.resize((size, size), Image.LANCZOS)
 
 
 # ── Individual icon renderers (draw at 4x scale, downscale at the end) ──────
 
+
 def _draw_gear(size: int, color: str):
     from PIL import ImageDraw
+
     img = _blank(size)
     d = ImageDraw.Draw(img)
     w = _stroke_px(size)
@@ -56,6 +63,7 @@ def _draw_gear(size: int, color: str):
     outer_r = int(size * 4 * 0.40)
     inner_r = int(size * 4 * 0.16)
     import math
+
     for i in range(8):
         a = math.radians(i * 45)
         x1 = cx + math.cos(a) * outer_r
@@ -65,17 +73,20 @@ def _draw_gear(size: int, color: str):
         d.line([(x1, y1), (x2, y2)], fill=color, width=w)
     d.ellipse(
         (cx - outer_r, cy - outer_r, cx + outer_r, cy + outer_r),
-        outline=color, width=w,
+        outline=color,
+        width=w,
     )
     d.ellipse(
         (cx - inner_r, cy - inner_r, cx + inner_r, cy + inner_r),
-        outline=color, width=w,
+        outline=color,
+        width=w,
     )
     return img
 
 
 def _draw_play(size: int, color: str):
     from PIL import ImageDraw
+
     img = _blank(size)
     d = ImageDraw.Draw(img)
     s = size * 4
@@ -89,12 +100,14 @@ def _draw_play(size: int, color: str):
 
 def _draw_stop(size: int, color: str):
     from PIL import ImageDraw
+
     img = _blank(size)
     d = ImageDraw.Draw(img)
     s = size * 4
     d.rounded_rectangle(
         (s * 0.28, s * 0.28, s * 0.72, s * 0.72),
-        radius=int(s * 0.06), fill=color,
+        radius=int(s * 0.06),
+        fill=color,
     )
     return img
 
@@ -102,6 +115,7 @@ def _draw_stop(size: int, color: str):
 def _draw_sun(size: int, color: str):
     from PIL import ImageDraw
     import math
+
     img = _blank(size)
     d = ImageDraw.Draw(img)
     w = _stroke_px(size)
@@ -122,6 +136,7 @@ def _draw_sun(size: int, color: str):
 
 def _draw_moon(size: int, color: str):
     from PIL import ImageDraw, Image
+
     img = _blank(size)
     s = size * 4
     w = _stroke_px(size)
@@ -143,6 +158,7 @@ def _draw_moon(size: int, color: str):
 def _draw_auto(size: int, color: str):
     """Half-moon dial — system appearance glyph."""
     from PIL import ImageDraw
+
     img = _blank(size)
     d = ImageDraw.Draw(img)
     s = size * 4
@@ -156,6 +172,7 @@ def _draw_auto(size: int, color: str):
 
 def _draw_search(size: int, color: str):
     from PIL import ImageDraw
+
     img = _blank(size)
     d = ImageDraw.Draw(img)
     s = size * 4
@@ -165,13 +182,15 @@ def _draw_search(size: int, color: str):
     d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=color, width=w)
     d.line(
         [(cx + r * 0.7, cy + r * 0.7), (s * 0.78, s * 0.78)],
-        fill=color, width=w,
+        fill=color,
+        width=w,
     )
     return img
 
 
 def _draw_jump_down(size: int, color: str):
     from PIL import ImageDraw
+
     img = _blank(size)
     d = ImageDraw.Draw(img)
     s = size * 4
@@ -179,69 +198,86 @@ def _draw_jump_down(size: int, color: str):
     # Down chevron
     d.line(
         [(s * 0.25, s * 0.40), (s * 0.50, s * 0.65), (s * 0.75, s * 0.40)],
-        fill=color, width=w, joint="curve",
+        fill=color,
+        width=w,
+        joint="curve",
     )
     return img
 
 
 def _draw_message_square(size: int, color: str):
     from PIL import ImageDraw
+
     img = _blank(size)
     d = ImageDraw.Draw(img)
     s = size * 4
     w = _stroke_px(size)
     d.rounded_rectangle(
         (s * 0.18, s * 0.20, s * 0.82, s * 0.68),
-        radius=int(s * 0.10), outline=color, width=w,
+        radius=int(s * 0.10),
+        outline=color,
+        width=w,
     )
     d.line(
         [(s * 0.35, s * 0.68), (s * 0.30, s * 0.82), (s * 0.48, s * 0.68)],
-        fill=color, width=w, joint="curve",
+        fill=color,
+        width=w,
+        joint="curve",
     )
     return img
 
 
 def _draw_chevron_right(size: int, color: str):
     from PIL import ImageDraw
+
     img = _blank(size)
     d = ImageDraw.Draw(img)
     s = size * 4
     w = _stroke_px(size)
     d.line(
         [(s * 0.40, s * 0.25), (s * 0.62, s * 0.50), (s * 0.40, s * 0.75)],
-        fill=color, width=w, joint="curve",
+        fill=color,
+        width=w,
+        joint="curve",
     )
     return img
 
 
 def _draw_chevron_down(size: int, color: str):
     from PIL import ImageDraw
+
     img = _blank(size)
     d = ImageDraw.Draw(img)
     s = size * 4
     w = _stroke_px(size)
     d.line(
         [(s * 0.25, s * 0.40), (s * 0.50, s * 0.62), (s * 0.75, s * 0.40)],
-        fill=color, width=w, joint="curve",
+        fill=color,
+        width=w,
+        joint="curve",
     )
     return img
 
 
 def _draw_check(size: int, color: str):
     from PIL import ImageDraw
+
     img = _blank(size)
     d = ImageDraw.Draw(img)
     s = size * 4
     w = _stroke_px(size)
     d.line(
         [(s * 0.22, s * 0.52), (s * 0.42, s * 0.72), (s * 0.78, s * 0.30)],
-        fill=color, width=w, joint="curve",
+        fill=color,
+        width=w,
+        joint="curve",
     )
     return img
 
 
 def _draw_eye(size: int, color: str):
     from PIL import ImageDraw
+
     img = _blank(size)
     d = ImageDraw.Draw(img)
     s = size * 4
@@ -258,6 +294,7 @@ def _draw_eye(size: int, color: str):
 
 def _draw_alert(size: int, color: str):
     from PIL import ImageDraw
+
     img = _blank(size)
     d = ImageDraw.Draw(img)
     s = size * 4
@@ -265,7 +302,8 @@ def _draw_alert(size: int, color: str):
     # Triangle outline
     d.polygon(
         [(s * 0.50, s * 0.18), (s * 0.86, s * 0.80), (s * 0.14, s * 0.80)],
-        outline=color, width=w,
+        outline=color,
+        width=w,
     )
     # Exclamation bar + dot
     d.line([(s * 0.50, s * 0.38), (s * 0.50, s * 0.58)], fill=color, width=w)

@@ -29,7 +29,9 @@ def _write_packaged_crash_log(exc: BaseException) -> None:
 
 if __name__ == "__main__":
     argv = sys.argv[1:]
-    has_flag = any(a in ("--gui", "analyze", "benchmark", "--metrics", "--ocr-profile") for a in argv)
+    has_flag = any(
+        a in ("--gui", "analyze", "benchmark", "--metrics", "--ocr-profile") for a in argv
+    )
     if not has_flag:
         argv = ["--gui"] + argv
     try:

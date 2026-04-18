@@ -22,7 +22,11 @@ def normalize_finished_message(finished, chat_type):
     hero = finished.get("hero", "").strip()
 
     # OCR can read the fixed closing bracket in "[player]:" as a trailing "l" or "I".
-    if category == "standard" and finished.get("ocr_fix_closing_bracket") and player[-1:] in ("l", "I"):
+    if (
+        category == "standard"
+        and finished.get("ocr_fix_closing_bracket")
+        and player[-1:] in ("l", "I")
+    ):
         player = player[:-1]
 
     if player.lower() in IGNORED_SENDERS:
@@ -244,15 +248,11 @@ def append_collected_record(
     include_hero_lines: bool,
 ) -> None:
     if record["category"] == "standard":
-        out[f"{record['chat_type']}_lines"].append(
-            f"[{record['player']}]: {record['msg']}"
-        )
+        out[f"{record['chat_type']}_lines"].append(f"[{record['player']}]: {record['msg']}")
     elif record["category"] == "hero" and include_hero_lines:
         if record["msg"]:
             out[f"{record['chat_type']}_lines"].append(
                 f"{record['player']} ({record['hero']}): {record['msg']}"
             )
         else:
-            out[f"{record['chat_type']}_lines"].append(
-                f"{record['player']} ({record['hero']})"
-            )
+            out[f"{record['chat_type']}_lines"].append(f"{record['player']} ({record['hero']})")

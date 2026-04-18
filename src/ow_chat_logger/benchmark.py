@@ -9,7 +9,6 @@ from typing import Any
 
 from ow_chat_logger.analysis import load_json_file, load_rgb_image
 from ow_chat_logger.config import (
-    DEFAULT_OCR_PROFILE,
     EASYOCR_MASTER_BASELINE_PROFILE,
     TESSERACT_DEFAULT_PROFILE,
     ResolvedOCRProfile,
@@ -144,8 +143,20 @@ def _unavailable_case(
         "status": "unavailable",
         "error": message,
         "exact_match": False,
-        "team": {"actual": [], "expected": [], "missing": [], "unexpected": [], "exact_match": False},
-        "all": {"actual": [], "expected": [], "missing": [], "unexpected": [], "exact_match": False},
+        "team": {
+            "actual": [],
+            "expected": [],
+            "missing": [],
+            "unexpected": [],
+            "exact_match": False,
+        },
+        "all": {
+            "actual": [],
+            "expected": [],
+            "missing": [],
+            "unexpected": [],
+            "exact_match": False,
+        },
         "timings": {"preprocess_ms": None, "ocr_ms": None, "parse_ms": None, "total_ms": None},
     }
 
@@ -160,7 +171,9 @@ def summarize_benchmark_results(rows: list[dict[str, Any]]) -> dict[str, Any]:
     for profile_name, profile_rows in grouped.items():
         ok_rows = [row for row in profile_rows if row["status"] == "ok"]
         exact_passes = sum(1 for row in ok_rows if row["exact_match"])
-        total_ms = [row["timings"]["total_ms"] for row in ok_rows if row["timings"]["total_ms"] is not None]
+        total_ms = [
+            row["timings"]["total_ms"] for row in ok_rows if row["timings"]["total_ms"] is not None
+        ]
         unavailable = sum(1 for row in profile_rows if row["status"] == "unavailable")
         errors = sum(1 for row in profile_rows if row["status"] == "error")
         pass_rate = (exact_passes / len(ok_rows)) if ok_rows else 0.0

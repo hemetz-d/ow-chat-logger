@@ -38,8 +38,7 @@ class OCRBackend(Protocol):
     profile_name: str
     languages: list[str]
 
-    def run(self, mask: np.ndarray) -> list[OCRResult]:
-        ...
+    def run(self, mask: np.ndarray) -> list[OCRResult]: ...
 
 
 class BaseOCRBackend(ABC):

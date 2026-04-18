@@ -90,8 +90,8 @@ def test_classify_hero_preserves_raw_hero_text_for_later_canonicalization():
 @pytest.mark.parametrize(
     "line",
     [
-        "lol (you wish)",                      # parenthetical in plain text — no colon after )
-        "someone joined (the server)",          # partial system-like text — no colon after )
+        "lol (you wish)",  # parenthetical in plain text — no colon after )
+        "someone joined (the server)",  # partial system-like text — no colon after )
     ],
 )
 def test_hero_pattern_not_triggered_without_colon(line):

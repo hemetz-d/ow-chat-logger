@@ -5,10 +5,7 @@ import numpy as np
 from ow_chat_logger.ocr.base import BaseOCRBackend, OCRBackendUnavailableError, OCRResult
 
 DEFAULT_ALLOWLIST = (
-    "abcdefghijklmnopqrstuvwxyz"
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    "0123456789"
-    '# :[]*!?.,-üäöÜÄÖ+#()&%$§"='
+    'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789# :[]*!?.,-üäöÜÄÖ+#()&%$§"='
 )
 
 

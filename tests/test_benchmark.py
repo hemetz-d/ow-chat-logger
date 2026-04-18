@@ -109,7 +109,9 @@ def test_run_benchmark_writes_json_and_csv_reports(monkeypatch, local_tmp_dir):
         encoding="utf-8",
     )
 
-    monkeypatch.setattr("ow_chat_logger.benchmark.load_rgb_image", lambda path: np.zeros((2, 2, 3), dtype=np.uint8))
+    monkeypatch.setattr(
+        "ow_chat_logger.benchmark.load_rgb_image", lambda path: np.zeros((2, 2, 3), dtype=np.uint8)
+    )
     monkeypatch.setattr("ow_chat_logger.benchmark.build_ocr_backend", lambda profile: object())
     monkeypatch.setattr(
         "ow_chat_logger.benchmark.extract_chat_debug_data",
@@ -155,11 +157,15 @@ def test_run_benchmark_resolves_profile_once_per_profile(monkeypatch, local_tmp_
     call_counts: dict[str, int] = {}
 
     def counting_resolve(config=None, profile_name=None):
-        call_counts[profile_name or "<default>"] = call_counts.get(profile_name or "<default>", 0) + 1
+        call_counts[profile_name or "<default>"] = (
+            call_counts.get(profile_name or "<default>", 0) + 1
+        )
         return real_resolve(config, profile_name)
 
     monkeypatch.setattr(benchmark_mod, "resolve_ocr_profile", counting_resolve)
-    monkeypatch.setattr(benchmark_mod, "load_rgb_image", lambda path: np.zeros((2, 2, 3), dtype=np.uint8))
+    monkeypatch.setattr(
+        benchmark_mod, "load_rgb_image", lambda path: np.zeros((2, 2, 3), dtype=np.uint8)
+    )
     monkeypatch.setattr(benchmark_mod, "build_ocr_backend", lambda profile: object())
     monkeypatch.setattr(
         benchmark_mod,

@@ -27,11 +27,11 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-36 | Capture regression screenshot fixtures for every chat-color preset | structural | 🔴 `open` | — |
 | T-39 | Extend build to produce a Windows installer | structural | 🔴 `open` | — |
 | T-40 | In-app update check / auto-updater for installed builds | structural | 🔴 `open` | — |
-| T-41 | Set up CI for PRs (tests + lint on GitHub Actions) | structural | 🔴 `open` | — |
 | T-43 | Search the persisted chat log for players and past messages | structural | 🔴 `open` | — |
 | T-42 | Re-resolve OCR profile on config change during a live session | structural | 🟢 `done` | 2026-04-18 |
 | T-38 | Detect "message contains embedded chat prefix" as a debug-snap anomaly | structural | 🟢 `done` | 2026-04-18 |
 | T-44 | Hide the console window for the packaged GUI exe | structural | 🟢 `done` | 2026-04-18 |
+| T-41 | Set up CI for PRs (tests + lint on GitHub Actions) | structural | 🟢 `done` | 2026-04-18 |
 | T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🟢 `done` | 2026-04-17 |
 | T-37 | Move `debug_snaps/` and `analysis/` out of user `log_dir` | structural | 🟢 `done` | 2026-04-17 |
 | T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🟢 `done` | 2026-04-17 |
@@ -216,25 +216,6 @@ Once the app ships via a Windows installer (T-39), users who installed an older 
 - Dev run detection: skip the check entirely when not running from an installed location (avoid nagging during development).
 
 **Test surface:** `tests/test_updater.py` — version comparison (semver parsing, pre-release handling), cache TTL honored, network-error path is silent, GUI banner state transitions. Stub the GitHub API response; do not hit the network in tests.
-
----
-
-### T-41 · Set up CI for PRs (tests + lint on GitHub Actions)
-- **Severity:** structural
-- **State:** 🔴 `open`
-- **File:** new `.github/workflows/ci.yml`, `pyproject.toml` (lint/format tool config if added), follow-up `.github/workflows/build.yml` once T-39 lands
-- **Completed:** —
-
-Today there is no automated check on PRs — `pytest` runs only on developer machines, and nothing stops a regression from merging to `master` if the author forgets to run the suite locally. Every new task that adds tests (T-40 updater tests, T-36 regression fixtures, T-31 helper extraction) relies entirely on reviewer discipline. Without CI the test surfaces described elsewhere in this doc are aspirational rather than enforced, and reviewers have no signal beyond reading the diff.
-
-**Fix direction:**
-- (a) Add `.github/workflows/ci.yml` triggered on `pull_request` and `push` to `master`. Primary runner: `windows-latest` — the app has Windows-only deps (`winrt-*`, `pywinstyles`) and the target platform is Windows, so Linux runners would need extensive skips to be useful. Matrix across Python 3.10 / 3.11 / 3.12 (current `requires-python = ">=3.10"`). Steps: checkout, `actions/setup-python` with pip cache keyed on `pyproject.toml`, `pip install -e ".[dev]"`, `pytest`.
-- (b) Pick a lint/format toolchain and run it as a separate, fast-failing job. Recommended: `ruff check` + `ruff format --check` (single tool, zero-config baseline, no black/flake8/isort sprawl). Land the initial formatting pass in its own PR so this task's CI-enablement PR doesn't also carry a repo-wide reformat.
-- (c) Gate merges on green CI — enable branch protection on `master` requiring the `ci` check. This is a GitHub repo settings change, not a code change; call it out in the PR description so the maintainer can flip it after merge.
-- (d) Handle optional OCR extras: `easyocr`/`pytesseract` are optional and pull heavy deps (torch, system tesseract). Default CI installs `[dev]` only; any test that requires a real OCR backend should be marked (`@pytest.mark.ocr`) and deferred to an optional, manually-triggered job rather than gating every PR on a multi-GB install.
-- (e) Non-goals for this task: code signing, release automation, publishing installers. Those belong with T-39 — once it lands, a follow-up `build.yml` (tag-triggered) can invoke `build_exe.ps1` plus the installer compiler. Keep this task strictly scoped to PR gating.
-
-**Test surface:** the workflow itself — verify on a throwaway PR that (1) a deliberately broken test fails the CI run, (2) a lint violation fails the lint job, (3) the check is green on `master` after merge. No in-repo test changes required; this task is pure infra.
 
 ---
 

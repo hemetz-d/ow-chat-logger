@@ -16,7 +16,9 @@ def test_remembers_within_window():
     assert f.is_new("b")
     assert f.is_new("c")
     assert not f.is_new("a")  # still in window
-    assert f.is_new("d")  # evicts oldest if full — actually capacity 3, after a,b,c queue full; d evicts a
+    assert f.is_new(
+        "d"
+    )  # evicts oldest if full — actually capacity 3, after a,b,c queue full; d evicts a
     assert f.is_new("a")  # a was evicted, so "new" again
 
 

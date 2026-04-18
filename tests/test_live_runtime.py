@@ -35,6 +35,7 @@ def test_latest_frame_queue_drops_oldest_item():
 def test_processing_worker_drains_queue_after_stop(monkeypatch):
     processed = []
     import ow_chat_logger.config as cfg_module
+
     cfg_module.load_config()
     monkeypatch.setitem(cfg_module._cached_config, "live_message_confirmations_required", 1)
 
@@ -458,6 +459,7 @@ def test_extract_chat_lines_for_live_records_metrics(monkeypatch):
 
 def test_extract_chat_lines_for_live_skips_ocr_for_nearly_empty_masks(monkeypatch):
     import ow_chat_logger.config as cfg_module
+
     screenshot = np.zeros((2, 2, 3), dtype=np.uint8)
     cfg_module.load_config()
     monkeypatch.setitem(cfg_module._cached_config, "min_mask_nonzero_pixels_for_ocr", 2)
