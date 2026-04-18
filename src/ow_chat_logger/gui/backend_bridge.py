@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ow_chat_logger.buffer import MessageBuffer
-from ow_chat_logger.config import CONFIG, get_app_paths, resolve_ocr_profile
+from ow_chat_logger.config import CONFIG, get_app_paths, reset_config, resolve_ocr_profile
 from ow_chat_logger.deduplication import DuplicateFilter
 from ow_chat_logger.live_runtime import (
     LatestFrameQueue,
@@ -71,6 +71,8 @@ class BackendBridge:
         self._hero_dedup: DuplicateFilter | None = None
         self._error_queue: queue.Queue = queue.Queue()
         self._frame_queue: LatestFrameQueue | None = None
+        self._reload_event: threading.Event | None = None
+        self._reload_notice: queue.Queue[tuple[str, str]] = queue.Queue(maxsize=10)
         self._cleanup_lock = threading.Lock()
         self._cleanup_started = False
 
@@ -110,6 +112,7 @@ class BackendBridge:
         self._stop_event = threading.Event()
         self._error_queue = queue.Queue()
         self._frame_queue = LatestFrameQueue()
+        self._reload_event = threading.Event()
 
         self._capture_thread = threading.Thread(
             target=capture_worker,
@@ -129,6 +132,8 @@ class BackendBridge:
                 "hero_dedup": self._hero_dedup,
                 "chat_logger": self._chat_logger,
                 "hero_logger": self._hero_logger,
+                "reload_event": self._reload_event,
+                "reload_notice": self._reload_notice,
             },
             name="gui-processing",
             daemon=True,
@@ -136,6 +141,22 @@ class BackendBridge:
         self._capture_thread.start()
         self._processing_thread.start()
         self.status_queue.put(StatusEvent("started", f"Logging — profile: {profile.name}"))
+
+    def reload_config(self) -> None:
+        """Invalidate the config cache and signal the live pipeline to re-resolve.
+
+        Safe to call when no session is running — becomes a no-op after the cache reset.
+        """
+        reset_config()
+        if self._reload_event is not None and self.is_running():
+            self._reload_event.set()
+
+    def drain_reload_notice(self) -> StatusEvent | None:
+        try:
+            kind, message = self._reload_notice.get_nowait()
+        except queue.Empty:
+            return None
+        return StatusEvent(kind=kind, message=message)
 
     def stop(self) -> None:
         if self._stop_event is None:

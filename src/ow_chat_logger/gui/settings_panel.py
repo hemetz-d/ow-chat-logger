@@ -700,6 +700,7 @@ class SettingsPanel(ctk.CTkScrollableFrame):
             self._on_save_cb()
         mb.showinfo(
             "Saved",
-            "Settings saved.\nRestart the logger (Stop → Start) to apply changes.",
+            "Settings saved.\nHSV and pipeline changes apply live; engine or "
+            "language changes require Stop → Start.",
             parent=self.winfo_toplevel(),
         )
