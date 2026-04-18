@@ -36,6 +36,7 @@ Invoke-Step "Building executable with Nuitka..." {
   python -m nuitka `
     --standalone `
     --msvc=latest `
+    --windows-console-mode=attach `
     --follow-imports `
     --nofollow-import-to=easyocr `
     --nofollow-import-to=torch `
