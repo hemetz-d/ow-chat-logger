@@ -39,6 +39,20 @@ def test_main_metrics_flags_dispatch_to_live_logger(monkeypatch):
     }
 
 
+def test_main_no_metrics_forces_override_off(monkeypatch):
+    """T-11: `--no-metrics` must override a config-enabled metrics setting."""
+    called = {}
+
+    def fake_run_live_logger(**kwargs):
+        called.update(kwargs)
+        return 0
+
+    monkeypatch.setattr("ow_chat_logger.main.run_live_logger", fake_run_live_logger)
+
+    assert main(["--no-metrics"]) == 0
+    assert called["metrics_enabled_override"] is False
+
+
 def test_main_analyze_dispatches(monkeypatch, local_tmp_dir):
     tmp_dir = local_tmp_dir("analyze-dispatch")
     image_path = tmp_dir / "sample.png"
