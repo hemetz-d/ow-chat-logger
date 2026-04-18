@@ -31,6 +31,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-40 | In-app update check / auto-updater for installed builds | structural | 🔴 `open` | — |
 | T-41 | Set up CI for PRs (tests + lint on GitHub Actions) | structural | 🔴 `open` | — |
 | T-43 | Search the persisted chat log for players and past messages | structural | 🔴 `open` | — |
+| T-44 | Hide the console window for the packaged GUI exe | structural | 🔴 `open` | — |
 | T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🟢 `done` | 2026-04-17 |
 | T-37 | Move `debug_snaps/` and `analysis/` out of user `log_dir` | structural | 🟢 `done` | 2026-04-17 |
 | T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🟢 `done` | 2026-04-17 |
@@ -321,6 +322,31 @@ A single Overwatch match is short and the live feed fits comfortably in memory �
 - Index-backed search (SQLite FTS) — premature until real-world CSV sizes actually become slow; `csv.reader` handles tens of thousands of rows in well under a second on realistic hardware.
 - Any live-feed filtering. The earlier draft of this task proposed filtering the live `FeedPanel` rows; that was explicitly dropped in the rework — sessions are short, the visible feed is already small, and live filter adds cost without value.
 - Context menu on player click (copy name, mute, favorite). Single left-click opens history; richer actions can land later if there is demand.
+
+---
+
+### T-44 · Hide the console window for the packaged GUI exe
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `build_exe.ps1`, `packaging/nuitka_entry.py`
+- **Completed:** —
+
+The Nuitka build today produces a console-subsystem `ow-chat-logger.exe`, so double-clicking the packaged exe opens both the GUI and an empty terminal window behind it. For end users this is noise at best and "is this malware?" at worst — the terminal has no user-facing purpose once the app is running in GUI mode, and Windows never auto-closes it when the main process exits. This should land before T-39 ships, since an installer that drops a visible-console app on the user's Start Menu would feel unprofessional.
+
+**Fix direction:**
+- (a) Add `--windows-console-mode=disable` to the `python -m nuitka` invocation in [build_exe.ps1:35-63](build_exe.ps1:35) (modern flag name; older Nuitka also accepts `--disable-console`). This removes the console subsystem from the built exe.
+- (b) Tradeoff: with console disabled, the packaged exe's CLI subcommands (`analyze`, `benchmark`, etc. — see [packaging/nuitka_entry.py:11](packaging/nuitka_entry.py:11)) lose stdout/stderr. If a user runs `ow-chat-logger.exe analyze ...` from a terminal they get silent output; if the GUI crashes before the Tk mainloop starts, no traceback surfaces anywhere. Two resolutions to evaluate:
+  1. **Use `--windows-console-mode=attach` instead of `disable`** — attaches to the parent console if one exists (so `ow-chat-logger.exe analyze ...` from a shell still prints), otherwise suppresses the console window. Usual Nuitka recommendation for "GUI app that also has CLI flags", and the preferred option here.
+  2. **Ship two exes** — `ow-chat-logger.exe` (GUI, console disabled) + `ow-chat-logger-cli.exe` (console forced), distinct Nuitka invocations. More work, cleaner separation, but roughly doubles build time and image size. Only worth it if `attach` proves buggy or incompatible with the OCR engines' runtime console usage.
+- (c) **Crash safety** (do not skip): once the console is disabled, uncaught exceptions that fire before the Tk mainloop starts must go to a file, not to /dev/null. Verify the existing crash-log wiring (see the `Crash log:` banner line in [live_runtime.py:376](src/ow_chat_logger/live_runtime.py:376)) activates early enough to catch pre-GUI failures; if not, wrap `main()` in a top-level `try`/`except` inside `packaging/nuitka_entry.py` that writes a timestamped traceback to `%APPDATA%\ow-chat-logger\crash.log` before exiting. Without this, a packaged-exe crash presents as "user double-clicks, nothing happens" with zero debuggability.
+- (d) Document the behaviour change in the README "Build a Windows exe" section: non-console GUI is the default; CLI subcommands only produce output when launched from an existing terminal (if `attach` is chosen) or from the paired CLI exe (if the two-exe split is chosen).
+
+**Test surface:** manual —
+1. Double-click the built exe from Explorer: no terminal window appears, GUI opens normally.
+2. Launch from a `cmd` or `powershell` window with a CLI subcommand (e.g. `ow-chat-logger.exe analyze <fixture>`): output appears in that terminal (`attach` mode) or produces an expected error if the two-exe split was taken.
+3. Artificially raise an exception at the top of `main()`, rebuild, double-click: `crash.log` is created at the documented path with a readable traceback (validates (c)).
+
+**Depends on / blocks:** should land before T-39 (Windows installer) — the installer shouldn't ship a build that spawns a terminal.
 
 ---
 
