@@ -15,7 +15,6 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | ID | Title | Severity | State | Completed |
 |----|-------|----------|-------|-----------|
 | T-10 | Dead commented-out code | smell | 🔴 `open` | — |
-| T-11 | CLI `--metrics` asymmetric flag | smell | 🔴 `open` | — |
 | T-21 | `SYSTEM_PATTERNS` redundant `.*` prefixes | smell | 🔴 `open` | — |
 | T-22 | `_effective_scale_factor` computed twice per resize | smell | 🔴 `open` | — |
 | T-25 | Inline error-case dict in `run_benchmark` duplicates `_unavailable_case` | smell | 🔴 `open` | — |
@@ -32,6 +31,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-38 | Detect "message contains embedded chat prefix" as a debug-snap anomaly | structural | 🟢 `done` | 2026-04-18 |
 | T-44 | Hide the console window for the packaged GUI exe | structural | 🟢 `done` | 2026-04-18 |
 | T-41 | Set up CI for PRs (tests + lint on GitHub Actions) | structural | 🟢 `done` | 2026-04-18 |
+| T-11 | CLI `--metrics` asymmetric flag | smell | 🟢 `done` | 2026-04-18 |
 | T-14 | `ocr_engine.py` monkey-patches module function in `__init__` | structural | 🟢 `done` | 2026-04-17 |
 | T-37 | Move `debug_snaps/` and `analysis/` out of user `log_dir` | structural | 🟢 `done` | 2026-04-17 |
 | T-20 | Save debug screenshot when a parsing anomaly is detected | structural | 🟢 `done` | 2026-04-17 |
@@ -291,20 +291,6 @@ An old `INTER_NEAREST` version of `clean_mask` lives as a comment block below th
 **Fix direction:** Delete it. The new `clean_mask_steps` with `INTER_NEAREST` is already the active implementation; the comment is stale.
 
 **Test surface:** No new tests needed. Verify existing image processing tests still pass.
-
----
-
-### T-11 · CLI `--metrics` flag can only force-on, not force-off
-- **Severity:** smell
-- **State:** 🔴 `open`
-- **File:** `src/ow_chat_logger/main.py:11-14`, `src/ow_chat_logger/main.py:84`
-- **Completed:** —
-
-`--metrics` sets `metrics_enabled_override=True`. Absence passes `None`, deferring to config. There is no way to force-disable metrics from the CLI when `metrics_enabled: true` is set in user config.
-
-**Fix direction:** Use `BooleanOptionalAction` (Python 3.9+) or add `--no-metrics` to allow explicit force-off. Update `create_metrics_collector` to accept `False` as a disable override.
-
-**Test surface:** `tests/test_cli.py` — add a case for `--no-metrics` overriding config-enabled metrics.
 
 ---
 

@@ -15,8 +15,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--metrics",
-        action="store_true",
-        help="Enable periodic live runtime metrics logging.",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Force metrics on (--metrics) or off (--no-metrics). "
+        "Absent: defer to `metrics_enabled` in config.",
     )
     parser.add_argument(
         "--metrics-interval",
@@ -90,7 +92,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "benchmark":
         return run_benchmark(args)
     return run_live_logger(
-        metrics_enabled_override=True if args.metrics else None,
+        metrics_enabled_override=args.metrics,
         metrics_interval_override=args.metrics_interval,
         metrics_log_path_override=args.metrics_log_path,
         ocr_profile_override=args.ocr_profile,
