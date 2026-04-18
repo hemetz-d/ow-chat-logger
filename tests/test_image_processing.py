@@ -413,7 +413,9 @@ def test_clean_mask_high_quality_mode_uses_larger_effective_scale():
     mask = np.zeros((2, 2), dtype=np.uint8)
     mask[0, 0] = 255
 
-    cleaned = clean_mask(mask, {"scale_factor": 2, "high_quality_ocr": True, "min_component_area": 0})
+    cleaned = clean_mask(
+        mask, {"scale_factor": 2, "high_quality_ocr": True, "min_component_area": 0}
+    )
 
     assert cleaned.shape == (6, 6)
 

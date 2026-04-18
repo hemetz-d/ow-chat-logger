@@ -48,7 +48,9 @@ def _mask_nonzero_pixels(debug_data: dict[str, Any]) -> dict[str, int]:
 def _serialize_ocr_results(debug_data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     serialized = {"team": [], "all": []}
     for channel in ("team", "all"):
-        for bbox, text, confidence in list((debug_data.get("ocr_results") or {}).get(channel) or []):
+        for bbox, text, confidence in list(
+            (debug_data.get("ocr_results") or {}).get(channel) or []
+        ):
             serialized[channel].append(
                 {
                     "text": str(text),
@@ -87,7 +89,9 @@ def analysis_report_paths(output_dir: Path) -> dict[str, Path]:
     }
 
 
-def _mask_step_output_paths(output_dir: Path, channel: str, steps: list[tuple[str, np.ndarray]]) -> list[Path]:
+def _mask_step_output_paths(
+    output_dir: Path, channel: str, steps: list[tuple[str, np.ndarray]]
+) -> list[Path]:
     return [output_dir / f"{channel}_{step_name}.png" for step_name, _ in steps]
 
 
@@ -206,8 +210,7 @@ def run_analyze(args) -> int:
         "ocr_results_serialized": _serialize_ocr_results(debug_data),
         "raw_lines": debug_data["raw_lines"],
         "raw_line_ys": debug_data.get("raw_line_ys") or {"team": [], "all": []},
-        "raw_channel_layouts": debug_data.get("raw_channel_layouts")
-        or {"team": {}, "all": {}},
+        "raw_channel_layouts": debug_data.get("raw_channel_layouts") or {"team": {}, "all": {}},
         "raw_line_prefix_evidence": debug_data.get("raw_line_prefix_evidence")
         or {"team": [], "all": []},
         "raw_continuation_y_gaps": debug_data.get("raw_continuation_y_gaps")

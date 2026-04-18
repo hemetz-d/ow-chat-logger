@@ -16,7 +16,7 @@ authors = [
     {name = "Unknown", email = "unknown@example.com"},
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 keywords = ["overwatch", "ocr", "chat", "logger"]
 
 dependencies = [
@@ -62,3 +62,16 @@ markers = [
     "ocr: screenshot OCR regression tests (use --run-ocr)",
 ]
 addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+# Intentionally below the 3.14 runtime: py314 enables PEP 758's bare-except
+# tuple rewrite (`except ValueError, KeyError:`), which is valid but looks
+# like Python 2 to most readers. Bump when the rewrite is widely understood.
+target-version = "py313"
+extend-exclude = [
+    ".nuitka-cache",
+    "build",
+    "dist",
+    "tests/_tmp_*",
+]

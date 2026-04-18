@@ -4,6 +4,7 @@ Opens a translucent, borderless `Toplevel` spanning the primary screen.
 User drags a rectangle; on release the [x, y, w, h] is delivered via a
 callback and the overlay closes. Escape cancels.
 """
+
 from __future__ import annotations
 
 import tkinter as tk

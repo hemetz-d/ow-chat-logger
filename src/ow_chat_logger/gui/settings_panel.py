@@ -188,7 +188,12 @@ class SettingsPanel(ctk.CTkScrollableFrame):
         rw = w * scale
         rh = h * scale
         self._region_preview.create_rectangle(
-            rx, ry, rx + rw, ry + rh, outline=accent, width=2,
+            rx,
+            ry,
+            rx + rw,
+            ry + rh,
+            outline=accent,
+            width=2,
         )
 
     def _open_region_picker(self) -> None:
@@ -320,9 +325,12 @@ class SettingsPanel(ctk.CTkScrollableFrame):
             )
             tol_label.pack(side="left", padx=(8, 0))
             # Update label when slider moves
-            tol_var.trace_add("write", lambda *_a, k=key, L=tol_label: L.configure(
-                text=f"{int(self._chat_tol[k].get())}°"
-            ))
+            tol_var.trace_add(
+                "write",
+                lambda *_a, k=key, L=tol_label: L.configure(
+                    text=f"{int(self._chat_tol[k].get())}°"
+                ),
+            )
 
         # Helpful caption at the bottom of the card
         ctk.CTkLabel(
@@ -456,9 +464,9 @@ class SettingsPanel(ctk.CTkScrollableFrame):
 
     def _adv_row_header(self, parent: ctk.CTkFrame, text: str, first: bool = False) -> None:
         if not first:
-            ctk.CTkFrame(
-                parent, height=1, fg_color=T.BORDER_FAINT, corner_radius=0
-            ).pack(fill="x", padx=16)
+            ctk.CTkFrame(parent, height=1, fg_color=T.BORDER_FAINT, corner_radius=0).pack(
+                fill="x", padx=16
+            )
         ctk.CTkLabel(
             parent,
             text=text,
@@ -552,9 +560,7 @@ class SettingsPanel(ctk.CTkScrollableFrame):
 
         region = cfg.get("screen_region", [80, 400, 400, 600])
         for i in range(4):
-            self._vars[f"screen_region_{i}"].set(
-                str(region[i] if i < len(region) else 0)
-            )
+            self._vars[f"screen_region_{i}"].set(str(region[i] if i < len(region) else 0))
 
         interval = float(cfg.get("capture_interval", 2.0))
         self._vars["capture_interval"].set(str(interval))
@@ -570,9 +576,9 @@ class SettingsPanel(ctk.CTkScrollableFrame):
         elif matched is not None and self._custom_speed_entry is not None:
             self._custom_speed_entry.pack_forget()
 
-        self._vars.setdefault(
-            "live_message_confirmations_required", tk.StringVar()
-        ).set(str(cfg.get("live_message_confirmations_required", 2)))
+        self._vars.setdefault("live_message_confirmations_required", tk.StringVar()).set(
+            str(cfg.get("live_message_confirmations_required", 2))
+        )
         self._vars.setdefault("max_remembered", tk.StringVar()).set(
             str(cfg.get("max_remembered", 1000))
         )
@@ -584,9 +590,7 @@ class SettingsPanel(ctk.CTkScrollableFrame):
             for bound in ("lower", "upper"):
                 key = f"{chat_key}_hsv_{bound}"
                 vals = cfg.get(key, [0, 0, 0])
-                var_list = self._hsv_vars.setdefault(
-                    key, [tk.StringVar() for _ in range(3)]
-                )
+                var_list = self._hsv_vars.setdefault(key, [tk.StringVar() for _ in range(3)])
                 for i, var in enumerate(var_list):
                     var.set(str(vals[i]) if i < len(vals) else "0")
 

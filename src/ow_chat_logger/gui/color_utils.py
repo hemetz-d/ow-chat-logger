@@ -2,6 +2,7 @@
 
 OpenCV HSV convention: H ∈ [0, 180], S ∈ [0, 255], V ∈ [0, 255].
 """
+
 from __future__ import annotations
 
 import colorsys

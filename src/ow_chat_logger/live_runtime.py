@@ -311,10 +311,9 @@ def processing_worker(
                         # Engine or language changes would need the OCR backend
                         # rebuilt; that requires a full restart (Stop → Start).
                         # The GUI already warns about this in the save dialog.
-                        if (
-                            new_profile.engine_id == ocr_profile.engine_id
-                            and list(new_profile.languages) == list(ocr_profile.languages)
-                        ):
+                        if new_profile.engine_id == ocr_profile.engine_id and list(
+                            new_profile.languages
+                        ) == list(ocr_profile.languages):
                             ocr_profile = new_profile
 
             started = time.perf_counter()
@@ -343,8 +342,7 @@ def processing_worker(
                             reason="bboxes_without_lines",
                             details={
                                 "ocr_box_counts": {
-                                    ch: len(debug_data["ocr_results"][ch])
-                                    for ch in ("team", "all")
+                                    ch: len(debug_data["ocr_results"][ch]) for ch in ("team", "all")
                                 },
                             },
                         )
@@ -358,7 +356,9 @@ def processing_worker(
                                     "chat_type": record.get("chat_type"),
                                     "player": record.get("player"),
                                     "msg": record.get("msg"),
-                                    "chars": suspicious_chars_in(record.get("msg", ""), allowed_charset),
+                                    "chars": suspicious_chars_in(
+                                        record.get("msg", ""), allowed_charset
+                                    ),
                                 },
                             )
                         embedded = message_contains_embedded_prefix(record)

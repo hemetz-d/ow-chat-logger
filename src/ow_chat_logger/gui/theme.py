@@ -214,8 +214,8 @@ def make_app_icon_photo():
     # Vertical gradient fill for the rounded square
     grad = Image.new("RGB", (1, size), "#0A84FF")
     gpx = grad.load()
-    top = (0x00, 0x5A, 0xD4)   # deeper blue
-    bot = (0x3A, 0x9C, 0xFF)   # lighter blue
+    top = (0x00, 0x5A, 0xD4)  # deeper blue
+    bot = (0x3A, 0x9C, 0xFF)  # lighter blue
     for y in range(size):
         t = y / (size - 1)
         gpx[0, y] = (
@@ -227,9 +227,7 @@ def make_app_icon_photo():
 
     # Round-rect mask
     mask = Image.new("L", (size, size), 0)
-    ImageDraw.Draw(mask).rounded_rectangle(
-        (0, 0, size - 1, size - 1), radius=15, fill=255
-    )
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, size - 1, size - 1), radius=15, fill=255)
 
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     img.paste(grad, (0, 0), mask)

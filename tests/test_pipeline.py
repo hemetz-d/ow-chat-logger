@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock
 
 import numpy as np
-import pytest
 
 from ow_chat_logger.pipeline import (
     crop_to_screen_region,

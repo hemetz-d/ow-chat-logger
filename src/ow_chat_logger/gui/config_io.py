@@ -19,9 +19,7 @@ def load_ui_config() -> dict[str, Any]:
             defaults["live_message_confirmations_required"],
         ),
         "max_remembered": cfg.get("max_remembered", defaults["max_remembered"]),
-        "ocr_default_profile": cfg.get(
-            "ocr_default_profile", defaults["ocr"]["default_profile"]
-        ),
+        "ocr_default_profile": cfg.get("ocr_default_profile", defaults["ocr"]["default_profile"]),
         "team_hsv_lower": list(cfg.get("team_hsv_lower", defaults["team_hsv_lower"])),
         "team_hsv_upper": list(cfg.get("team_hsv_upper", defaults["team_hsv_upper"])),
         "all_hsv_lower": list(cfg.get("all_hsv_lower", defaults["all_hsv_lower"])),

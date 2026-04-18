@@ -72,9 +72,7 @@ def contains_suspicious_characters(
 # like `"J: hello [Makiko] hey"`, where two chat lines were welded into one
 # record. Isolated trailing mentions (`"see [Makiko]"`) deliberately do not
 # match: they lack the trailing content that indicates a second welded message.
-_EMBEDDED_PREFIX_PATTERN = re.compile(
-    r"\S\s*\[[^\[\]]{2,30}\]\s*:?\s*\S"
-)
+_EMBEDDED_PREFIX_PATTERN = re.compile(r"\S\s*\[[^\[\]]{2,30}\]\s*:?\s*\S")
 
 
 def message_contains_embedded_prefix(
@@ -128,8 +126,7 @@ def save_anomaly_snapshot(
         "raw_lines": debug_data.get("raw_lines"),
         "timings": debug_data.get("timings"),
         "ocr_box_counts": {
-            ch: len((debug_data.get("ocr_results") or {}).get(ch) or [])
-            for ch in ("team", "all")
+            ch: len((debug_data.get("ocr_results") or {}).get(ch) or []) for ch in ("team", "all")
         },
         "ocr_profile": (debug_data.get("config") or {}).get("ocr_profile"),
         "ocr_engine": (debug_data.get("config") or {}).get("ocr_engine"),

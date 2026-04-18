@@ -22,7 +22,7 @@ from ow_chat_logger.ocr import build_ocr_backend
 @dataclass
 class FeedEntry:
     timestamp: str
-    category: str   # "standard" | "hero"
+    category: str  # "standard" | "hero"
     chat_type: str  # "team" | "all" | ""
     player: str
     text: str
@@ -30,7 +30,7 @@ class FeedEntry:
 
 @dataclass
 class StatusEvent:
-    kind: str     # "started" | "stopped" | "error" | "info"
+    kind: str  # "started" | "stopped" | "error" | "info"
     message: str
 
 

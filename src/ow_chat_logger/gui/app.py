@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 import queue
 import time
-import tkinter as tk
 import tkinter.colorchooser as colorchooser
 
 import customtkinter as ctk
@@ -32,6 +31,7 @@ def _apply_appearance(mode: str) -> None:
 
 
 # ── Main application window ───────────────────────────────────────────────────
+
 
 class OWChatLoggerApp(ctk.CTk):
     def __init__(self) -> None:
@@ -312,10 +312,12 @@ class OWChatLoggerApp(ctk.CTk):
             return
         hex_color: str = result[1]
         lower, upper = hex_to_hsv_bounds(hex_color)
-        save_ui_config({
-            f"{chat_key}_hsv_lower": lower,
-            f"{chat_key}_hsv_upper": upper,
-        })
+        save_ui_config(
+            {
+                f"{chat_key}_hsv_lower": lower,
+                f"{chat_key}_hsv_upper": upper,
+            }
+        )
         self._bridge.reload_config()
         self._swatches[chat_key].configure(fg_color=hex_color, hover_color=hex_color)
         self._feed_panel.refresh_chat_colors()
@@ -329,9 +331,7 @@ class OWChatLoggerApp(ctk.CTk):
                 hex_color = hsv_bounds_to_hex(
                     cfg[f"{chat_key}_hsv_lower"], cfg[f"{chat_key}_hsv_upper"]
                 )
-                self._swatches[chat_key].configure(
-                    fg_color=hex_color, hover_color=hex_color
-                )
+                self._swatches[chat_key].configure(fg_color=hex_color, hover_color=hex_color)
             except Exception:
                 pass
         self._feed_panel.refresh_chat_colors()
@@ -378,9 +378,7 @@ class OWChatLoggerApp(ctk.CTk):
             font=T.font_title(),
             text_color=T.TEXT_PRIMARY,
         ).pack(side="left", padx=22, pady=10)
-        ctk.CTkFrame(win, height=1, fg_color=T.BORDER_HAIRLINE, corner_radius=0).pack(
-            fill="x"
-        )
+        ctk.CTkFrame(win, height=1, fg_color=T.BORDER_HAIRLINE, corner_radius=0).pack(fill="x")
 
         panel = SettingsPanel(win, on_save=self._refresh_swatches)
         panel.pack(fill="both", expand=True)
@@ -517,6 +515,7 @@ class OWChatLoggerApp(ctk.CTk):
     def _pulse_step(self, tick: int) -> None:
         # ~1.2s period at 80ms ticks → 15 steps per cycle
         phase = (math.sin(tick * 2 * math.pi / 15) + 1) / 2  # 0..1
+
         # Interpolate between SUCCESS and a dimmed variant
         def _dim(hex_color: str, amount: float) -> str:
             h = hex_color.lstrip("#")
@@ -525,6 +524,7 @@ class OWChatLoggerApp(ctk.CTk):
             g = int(g * (1 - amount) + 255 * amount * 0.25)
             b = int(b * (1 - amount) + 255 * amount * 0.25)
             return f"#{r:02x}{g:02x}{b:02x}"
+
         dim_amount = 0.45 * (1 - phase)
         color = (
             _dim(T.SUCCESS[0], dim_amount),
@@ -561,9 +561,7 @@ class OWChatLoggerApp(ctk.CTk):
         hh, mm = divmod(mm, 60)
         clock = f"{hh:d}:{mm:02d}:{ss:02d}" if hh else f"{mm:02d}:{ss:02d}"
         plural = "s" if self._message_count != 1 else ""
-        self._stats_label.configure(
-            text=f"{clock} · {self._message_count} msg{plural}"
-        )
+        self._stats_label.configure(text=f"{clock} · {self._message_count} msg{plural}")
         self._stats_job = self.after(1000, self._stats_tick)
 
 
