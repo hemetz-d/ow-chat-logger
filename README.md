@@ -188,6 +188,12 @@ Fixture format is documented in [tests/fixtures/regression/README.md](tests/fixt
 
 This builds a standalone folder app with Nuitka using [packaging/nuitka_entry.py](packaging/nuitka_entry.py).
 
+The built exe is console-less by default (`--windows-console-mode=attach`):
+
+- Double-clicking from Explorer opens only the GUI window — no empty terminal.
+- CLI subcommands (`ow-chat-logger.exe analyze …`, `benchmark …`) still print to the parent console when launched from `cmd` or `powershell`.
+- Uncaught exceptions before the GUI mainloop appear in `%APPDATA%\ow-chat-logger\crash.log` so packaged-exe failures are never silent.
+
 ## Repo Layout
 
 Root files are intentionally kept small and user-facing:
