@@ -22,7 +22,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-36 | Capture regression screenshot fixtures for every chat-color preset | structural | 🔴 `open` | — |
 | T-39 | Extend build to produce a Windows installer | structural | 🔴 `open` | — |
 | T-40 | In-app update check / auto-updater for installed builds | structural | 🔴 `open` | — |
-| T-43 | Search the persisted chat log for players and past messages | structural | 🔴 `open` | — |
+| T-43 | Search the persisted chat log for players and past messages | structural | 🟢 `done` | 2026-04-20 |
 | T-25 | Inline error-case dict in `run_benchmark` duplicates `_unavailable_case` | smell | 🟢 `done` | 2026-04-20 |
 | T-10 | Dead commented-out code | smell | 🟢 `done` | 2026-04-20 |
 | T-21 | `SYSTEM_PATTERNS` redundant `.*` prefixes | smell | 🟢 `done` | 2026-04-20 |
