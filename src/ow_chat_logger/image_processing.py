@@ -61,11 +61,12 @@ def clean_mask_steps(
     cfg = _cfg(config)
     steps: list[tuple[str, np.ndarray]] = [("01_raw_threshold", mask.copy())]
 
+    scale = _effective_scale_factor(cfg)
     upscaled = cv2.resize(
         mask,
         None,
-        fx=_effective_scale_factor(cfg),
-        fy=_effective_scale_factor(cfg),
+        fx=scale,
+        fy=scale,
         interpolation=cv2.INTER_NEAREST,
     )
     steps.append(("02_upscaled", upscaled.copy()))
@@ -87,18 +88,6 @@ def clean_mask_steps(
 
 def clean_mask(mask, config: Optional[Mapping[str, Any]] = None):
     return clean_mask_steps(mask, config)[-1][1]
-
-
-# option with less processing (just upscaling)
-# def clean_mask(mask):
-#     mask = cv2.resize(
-#         mask,
-#         None,
-#         fx=3,
-#         fy=3,
-#         interpolation=cv2.INTER_NEAREST
-#     )
-#     return mask
 
 
 def _bbox_center_y(bbox) -> float:
