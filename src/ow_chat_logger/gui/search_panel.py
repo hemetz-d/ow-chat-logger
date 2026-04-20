@@ -312,14 +312,46 @@ class SearchView(ctk.CTkFrame):
         # Wrapped chat lines indent to roughly past the timestamp+dot gutter
         # so the message body stays visually attached to the player name.
         t.tag_configure("line", spacing1=3, spacing3=3, lmargin1=0, lmargin2=130)
-        t.tag_configure("ts", foreground=T.pick(T.TEXT_MUTED), font=ts_font)
-        t.tag_configure("dot_team", foreground=T.pick(T.CHAT_TEAM), font=ctk.CTkFont(size=10))
-        t.tag_configure("dot_all", foreground=T.pick(T.CHAT_ALL), font=ctk.CTkFont(size=10))
-        t.tag_configure("dot_hero", foreground=T.pick(T.CHAT_HERO), font=ctk.CTkFont(size=10))
-        t.tag_configure("player", foreground=T.pick(T.TEXT_PRIMARY), font=bold)
-        t.tag_configure("text", foreground=T.pick(T.TEXT_SECONDARY), font=body)
-        t.tag_configure("hero_text", foreground=T.pick(T.CHAT_HERO), font=body)
-        t.tag_configure("placeholder", foreground=T.pick(T.TEXT_MUTED), font=T.font_small())
+        t.tag_configure("ts", font=ts_font)
+        t.tag_configure("dot_team", font=ctk.CTkFont(size=10))
+        t.tag_configure("dot_all", font=ctk.CTkFont(size=10))
+        t.tag_configure("dot_hero", font=ctk.CTkFont(size=10))
+        t.tag_configure("player", font=bold)
+        t.tag_configure("text", font=body)
+        t.tag_configure("hero_text", font=body)
+        t.tag_configure("placeholder", font=T.font_small())
+        self._apply_mode_colors()
+
+    def _apply_mode_colors(self) -> None:
+        """Re-resolve every mode-dependent color on the native tk.Text widget.
+
+        tk.Text and its tags don't participate in ctk's (light, dark) tuple
+        plumbing, so we re-pick hexes whenever the appearance mode flips.
+        """
+        t = self._results_text
+        t.configure(
+            bg=T.pick(T.BG_CARD),
+            fg=T.pick(T.TEXT_PRIMARY),
+            insertbackground=T.pick(T.TEXT_PRIMARY),
+            selectbackground=T.pick(T.BG_SELECT),
+            inactiveselectbackground=T.pick(T.BG_SELECT),
+        )
+        t.tag_configure("ts", foreground=T.pick(T.TEXT_MUTED))
+        t.tag_configure("dot_team", foreground=T.pick(T.CHAT_TEAM))
+        t.tag_configure("dot_all", foreground=T.pick(T.CHAT_ALL))
+        t.tag_configure("dot_hero", foreground=T.pick(T.CHAT_HERO))
+        t.tag_configure("player", foreground=T.pick(T.TEXT_PRIMARY))
+        t.tag_configure("text", foreground=T.pick(T.TEXT_SECONDARY))
+        t.tag_configure("hero_text", foreground=T.pick(T.CHAT_HERO))
+        t.tag_configure("placeholder", foreground=T.pick(T.TEXT_MUTED))
+
+    def _set_appearance_mode(self, mode_string: str) -> None:
+        super()._set_appearance_mode(mode_string)
+        # ctk may call this during super().__init__, before _results_text exists.
+        t = getattr(self, "_results_text", None)
+        if t is None or not t.winfo_exists():
+            return
+        self._apply_mode_colors()
 
     def _render_empty(self, hint: str, *, footer: str) -> None:
         t = self._results_text
