@@ -89,25 +89,19 @@ def test_search_case_insensitive(logs):
 
 def test_search_channel_filter_team(logs):
     chat, hero = logs
-    rs = search_logs(
-        "chiaki", chat_log_path=chat, hero_log_path=hero, channel_filter="team"
-    )
+    rs = search_logs("chiaki", chat_log_path=chat, hero_log_path=hero, channel_filter="team")
     assert {r.source for r in rs.results} == {"team"}
 
 
 def test_search_channel_filter_all(logs):
     chat, hero = logs
-    rs = search_logs(
-        "chiaki", chat_log_path=chat, hero_log_path=hero, channel_filter="all"
-    )
+    rs = search_logs("chiaki", chat_log_path=chat, hero_log_path=hero, channel_filter="all")
     assert {r.source for r in rs.results} == {"all"}
 
 
 def test_search_channel_filter_hero(logs):
     chat, hero = logs
-    rs = search_logs(
-        "chiaki", chat_log_path=chat, hero_log_path=hero, channel_filter="hero"
-    )
+    rs = search_logs("chiaki", chat_log_path=chat, hero_log_path=hero, channel_filter="hero")
     assert {r.source for r in rs.results} == {"hero"}
     # Both Chiaki hero rows + Alice's Chiaki-skin-hero.
     assert len(rs.results) == 3
@@ -188,20 +182,13 @@ def test_history_pulls_chat_and_hero_newest_first(logs):
 
 def test_history_empty_player_returns_empty(logs):
     chat, hero = logs
-    assert (
-        history_for_player("", chat_log_path=chat, hero_log_path=hero).results == []
-    )
-    assert (
-        history_for_player("   ", chat_log_path=chat, hero_log_path=hero).results
-        == []
-    )
+    assert history_for_player("", chat_log_path=chat, hero_log_path=hero).results == []
+    assert history_for_player("   ", chat_log_path=chat, hero_log_path=hero).results == []
 
 
 def test_history_limit_honored(logs):
     chat, hero = logs
-    rs = history_for_player(
-        "Chiaki", chat_log_path=chat, hero_log_path=hero, limit=2
-    )
+    rs = history_for_player("Chiaki", chat_log_path=chat, hero_log_path=hero, limit=2)
     assert len(rs.results) == 2
     assert rs.truncated is True
 
@@ -220,9 +207,7 @@ def test_search_match_field_player_only(logs):
     # "chiaki" appears as player (Chiaki, Chiaki123, NotChiaki, chiaki) AND
     # in message text ("nice ult CHIAKI") AND hero text ("Chiaki-skin-hero").
     # With match_field="player", rows matched solely by text/hero-text are excluded.
-    rs = search_logs(
-        "chiaki", chat_log_path=chat, hero_log_path=hero, match_field="player"
-    )
+    rs = search_logs("chiaki", chat_log_path=chat, hero_log_path=hero, match_field="player")
     players = {r.player for r in rs.results}
     # Bob had "nice ult CHIAKI" — text-only match, must be excluded.
     assert "Bob" not in players
@@ -234,9 +219,7 @@ def test_search_match_field_player_only(logs):
 
 def test_search_match_field_text_only(logs):
     chat, hero = logs
-    rs = search_logs(
-        "chiaki", chat_log_path=chat, hero_log_path=hero, match_field="text"
-    )
+    rs = search_logs("chiaki", chat_log_path=chat, hero_log_path=hero, match_field="text")
     players = {r.player for r in rs.results}
     # Player-only matches (the four Chiaki-named rows that don't mention
     # "chiaki" in text) must be excluded. Only Bob's "nice ult CHIAKI"

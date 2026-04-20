@@ -98,9 +98,7 @@ class MainTabs(ctk.CTkFrame):
                     fg_color=T.BG_ELEV,
                     hover_color=T.BORDER_HOVER,
                     text_color=T.TEXT_SECONDARY,
-                    image=I.icon(
-                        _TAB_ICONS[label], 16, color=T.pick(T.TEXT_SECONDARY)
-                    ),
+                    image=I.icon(_TAB_ICONS[label], 16, color=T.pick(T.TEXT_SECONDARY)),
                 )
 
     # ── Public API ───────────────────────────────────────────────────────────

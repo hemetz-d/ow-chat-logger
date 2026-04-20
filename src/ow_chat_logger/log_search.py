@@ -74,8 +74,7 @@ def search_logs(
         hits.extend(
             r
             for r in _read_chat_rows(chat_log_path)
-            if _match(r)
-            and (channel_filter is None or r.source == channel_filter)
+            if _match(r) and (channel_filter is None or r.source == channel_filter)
         )
     if channel_filter in (None, "hero"):
         hits.extend(r for r in _read_hero_rows(hero_log_path) if _match(r))

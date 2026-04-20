@@ -274,9 +274,7 @@ class SearchView(ctk.CTkFrame):
                 footer="",
             )
             return
-        match_field, channel = _LABEL_TO_MODE.get(
-            self._filter_var.get(), ("player", None)
-        )
+        match_field, channel = _LABEL_TO_MODE.get(self._filter_var.get(), ("player", None))
         result_set = search_logs(
             query,
             chat_log_path=self._chat_log_path,
@@ -313,19 +311,11 @@ class SearchView(ctk.CTkFrame):
         ts_font = (T.mono_family(), 10)
         # Wrapped chat lines indent to roughly past the timestamp+dot gutter
         # so the message body stays visually attached to the player name.
-        t.tag_configure(
-            "line", spacing1=3, spacing3=3, lmargin1=0, lmargin2=130
-        )
+        t.tag_configure("line", spacing1=3, spacing3=3, lmargin1=0, lmargin2=130)
         t.tag_configure("ts", foreground=T.pick(T.TEXT_MUTED), font=ts_font)
-        t.tag_configure(
-            "dot_team", foreground=T.pick(T.CHAT_TEAM), font=ctk.CTkFont(size=10)
-        )
-        t.tag_configure(
-            "dot_all", foreground=T.pick(T.CHAT_ALL), font=ctk.CTkFont(size=10)
-        )
-        t.tag_configure(
-            "dot_hero", foreground=T.pick(T.CHAT_HERO), font=ctk.CTkFont(size=10)
-        )
+        t.tag_configure("dot_team", foreground=T.pick(T.CHAT_TEAM), font=ctk.CTkFont(size=10))
+        t.tag_configure("dot_all", foreground=T.pick(T.CHAT_ALL), font=ctk.CTkFont(size=10))
+        t.tag_configure("dot_hero", foreground=T.pick(T.CHAT_HERO), font=ctk.CTkFont(size=10))
         t.tag_configure("player", foreground=T.pick(T.TEXT_PRIMARY), font=bold)
         t.tag_configure("text", foreground=T.pick(T.TEXT_SECONDARY), font=body)
         t.tag_configure("hero_text", foreground=T.pick(T.CHAT_HERO), font=body)
@@ -339,9 +329,7 @@ class SearchView(ctk.CTkFrame):
         t.configure(state="disabled")
         self._set_footer_text(footer)
 
-    def _render_results(
-        self, result_set: SearchResultSet, *, empty_hint: str
-    ) -> None:
+    def _render_results(self, result_set: SearchResultSet, *, empty_hint: str) -> None:
         t = self._results_text
 
         if not result_set.results:
