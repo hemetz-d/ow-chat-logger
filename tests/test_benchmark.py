@@ -4,7 +4,11 @@ from argparse import Namespace
 
 import numpy as np
 
+from pathlib import Path
+
 from ow_chat_logger.benchmark import (
+    _error_case,
+    _unavailable_case,
     default_profile_names,
     discover_benchmark_cases,
     run_benchmark,
@@ -190,6 +194,60 @@ def test_run_benchmark_resolves_profile_once_per_profile(monkeypatch, local_tmp_
 
     assert run_benchmark(args) == 0
     assert call_counts.get("windows_default") == 1
+
+
+def test_error_case_matches_unavailable_case_schema():
+    kwargs = {
+        "png_path": Path("sample.png"),
+        "expected_path": Path("sample.expected.json"),
+        "profile_name": "windows_default",
+        "engine_id": "windows",
+        "message": "boom",
+    }
+
+    unavailable = _unavailable_case(**kwargs)
+    error = _error_case(**kwargs)
+
+    assert error.keys() == unavailable.keys()
+    assert error["status"] == "error"
+    assert unavailable["status"] == "unavailable"
+    for key in error.keys() - {"status"}:
+        assert error[key] == unavailable[key], key
+
+
+def test_run_benchmark_marks_error_when_case_raises(monkeypatch, local_tmp_dir):
+    fixture_dir = local_tmp_dir("benchmark-error")
+    (fixture_dir / "fixture.png").write_bytes(b"fake")
+    (fixture_dir / "fixture.expected.json").write_text(
+        json.dumps({"team_lines": [], "all_lines": []}),
+        encoding="utf-8",
+    )
+
+    def raising_extract(*args, **kwargs):
+        raise RuntimeError("simulated failure")
+
+    monkeypatch.setattr(
+        "ow_chat_logger.benchmark.load_rgb_image", lambda path: np.zeros((2, 2, 3), dtype=np.uint8)
+    )
+    monkeypatch.setattr("ow_chat_logger.benchmark.build_ocr_backend", lambda profile: object())
+    monkeypatch.setattr("ow_chat_logger.benchmark.extract_chat_debug_data", raising_extract)
+
+    json_out = fixture_dir / "report.json"
+    args = Namespace(
+        fixtures=str(fixture_dir),
+        profiles=["windows_default"],
+        benchmark_config=None,
+        json_out=str(json_out),
+        csv_out=None,
+    )
+
+    assert run_benchmark(args) == 0
+    report = json.loads(json_out.read_text(encoding="utf-8"))
+    results = report["results"]
+    assert len(results) == 1
+    assert results[0]["status"] == "error"
+    assert results[0]["error"] == "simulated failure"
+    assert report["summary"]["profiles"]["windows_default"]["error_cases"] == 1
 
 
 def test_run_benchmark_marks_unavailable_profiles(monkeypatch, local_tmp_dir):

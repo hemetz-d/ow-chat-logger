@@ -126,12 +126,13 @@ def _benchmark_case(
     }
 
 
-def _unavailable_case(
+def _placeholder_case(
     *,
     png_path: Path,
     expected_path: Path,
     profile_name: str,
     engine_id: str,
+    status: str,
     message: str,
 ) -> dict[str, Any]:
     return {
@@ -140,7 +141,7 @@ def _unavailable_case(
         "expected_path": str(expected_path.resolve()),
         "ocr_profile": profile_name,
         "ocr_engine": engine_id,
-        "status": "unavailable",
+        "status": status,
         "error": message,
         "exact_match": False,
         "team": {
@@ -159,6 +160,42 @@ def _unavailable_case(
         },
         "timings": {"preprocess_ms": None, "ocr_ms": None, "parse_ms": None, "total_ms": None},
     }
+
+
+def _unavailable_case(
+    *,
+    png_path: Path,
+    expected_path: Path,
+    profile_name: str,
+    engine_id: str,
+    message: str,
+) -> dict[str, Any]:
+    return _placeholder_case(
+        png_path=png_path,
+        expected_path=expected_path,
+        profile_name=profile_name,
+        engine_id=engine_id,
+        status="unavailable",
+        message=message,
+    )
+
+
+def _error_case(
+    *,
+    png_path: Path,
+    expected_path: Path,
+    profile_name: str,
+    engine_id: str,
+    message: str,
+) -> dict[str, Any]:
+    return _placeholder_case(
+        png_path=png_path,
+        expected_path=expected_path,
+        profile_name=profile_name,
+        engine_id=engine_id,
+        status="error",
+        message=message,
+    )
 
 
 def summarize_benchmark_results(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -303,36 +340,13 @@ def run_benchmark(args) -> int:
                 )
             except Exception as exc:
                 rows.append(
-                    {
-                        "fixture_name": png_path.name,
-                        "fixture_path": str(png_path.resolve()),
-                        "expected_path": str(expected_path.resolve()),
-                        "ocr_profile": profile.name,
-                        "ocr_engine": profile.engine_id,
-                        "status": "error",
-                        "error": str(exc),
-                        "exact_match": False,
-                        "team": {
-                            "actual": [],
-                            "expected": [],
-                            "missing": [],
-                            "unexpected": [],
-                            "exact_match": False,
-                        },
-                        "all": {
-                            "actual": [],
-                            "expected": [],
-                            "missing": [],
-                            "unexpected": [],
-                            "exact_match": False,
-                        },
-                        "timings": {
-                            "preprocess_ms": None,
-                            "ocr_ms": None,
-                            "parse_ms": None,
-                            "total_ms": None,
-                        },
-                    }
+                    _error_case(
+                        png_path=png_path,
+                        expected_path=expected_path,
+                        profile_name=profile.name,
+                        engine_id=profile.engine_id,
+                        message=str(exc),
+                    )
                 )
 
     summary = summarize_benchmark_results(rows)
