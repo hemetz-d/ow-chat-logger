@@ -20,6 +20,7 @@ __pycache__/
 
 # Tests
 tests/_test_log_dir/
+tests/_tmp_*/
 .pytest_cache/
 .coverage
 htmlcov/
