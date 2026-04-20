@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from typing import Callable
 
 import customtkinter as ctk
 
@@ -11,6 +12,49 @@ from ow_chat_logger.gui.color_utils import hsv_bounds_to_hex
 from ow_chat_logger.gui.config_io import load_ui_config
 
 _MAX_ROWS = 500
+
+
+def _is_clickable_player(name: str) -> bool:
+    cleaned = (name or "").strip()
+    return bool(cleaned) and cleaned != "—"
+
+
+def _bind_player_click(
+    label: ctk.CTkLabel,
+    player: str,
+    on_click: Callable[[str], None] | None,
+) -> None:
+    """Give a player label hover underline + click-to-history behavior.
+
+    No-op when ``on_click`` is not wired or the player is a placeholder.
+    """
+    if on_click is None or not _is_clickable_player(player):
+        return
+
+    base_font = label.cget("font")
+    # CTkFont is the expected type here; fall back gracefully on mismatch.
+    try:
+        hover_font = ctk.CTkFont(
+            family=base_font.cget("family"),
+            size=base_font.cget("size"),
+            weight=base_font.cget("weight"),
+            underline=True,
+        )
+    except Exception:
+        hover_font = base_font
+
+    def _enter(_e: tk.Event) -> None:
+        label.configure(cursor="hand2", font=hover_font)
+
+    def _leave(_e: tk.Event) -> None:
+        label.configure(cursor="", font=base_font)
+
+    def _click(_e: tk.Event) -> None:
+        on_click(player.strip())
+
+    label.bind("<Enter>", _enter, add="+")
+    label.bind("<Leave>", _leave, add="+")
+    label.bind("<Button-1>", _click, add="+")
 
 
 # ── Message row widget ────────────────────────────────────────────────────────
@@ -24,6 +68,7 @@ class MessageRow(ctk.CTkFrame):
         parent: tk.Widget,
         entry: FeedEntry,
         dot_color: str | None,
+        on_player_click: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__(
             parent,
@@ -31,6 +76,7 @@ class MessageRow(ctk.CTkFrame):
             corner_radius=0,
         )
         self._entry = entry
+        self._on_player_click = on_player_click
         self._build(dot_color)
         self.bind("<Configure>", self._on_row_configure)
         self.bind("<Enter>", lambda _e: self._set_hover(True))
@@ -51,13 +97,16 @@ class MessageRow(ctk.CTkFrame):
         content = ctk.CTkFrame(self, fg_color="transparent")
         content.grid(row=0, column=1, sticky="ew", pady=1)
 
-        ctk.CTkLabel(
+        player_name = self._entry.player or "—"
+        player_label = ctk.CTkLabel(
             content,
-            text=self._entry.player or "—",
+            text=player_name,
             text_color=T.TEXT_PRIMARY,
             font=T.font_button(),
             anchor="w",
-        ).pack(side="left")
+        )
+        player_label.pack(side="left")
+        _bind_player_click(player_label, player_name, self._on_player_click)
 
         body = ctk.CTkLabel(
             content,
@@ -103,8 +152,14 @@ class MessageRow(ctk.CTkFrame):
 class HeroRow(ctk.CTkFrame):
     """Hero-pick log event — deliberately not styled like chat."""
 
-    def __init__(self, parent: tk.Widget, entry: FeedEntry) -> None:
+    def __init__(
+        self,
+        parent: tk.Widget,
+        entry: FeedEntry,
+        on_player_click: Callable[[str], None] | None = None,
+    ) -> None:
         super().__init__(parent, fg_color="transparent", corner_radius=0)
+        self._on_player_click = on_player_click
         self._build(entry)
 
     def _build(self, entry: FeedEntry) -> None:
@@ -118,16 +173,30 @@ class HeroRow(ctk.CTkFrame):
             font=T.font_body(),
         ).grid(row=0, column=0, padx=(28, 0), pady=3, sticky="w")
 
+        line = ctk.CTkFrame(self, fg_color="transparent")
+        line.grid(row=0, column=1, padx=(8, 0), pady=3, sticky="w")
+
         player = entry.player or "—"
         hero = entry.text or "—"
-        text = f"{player}  →  {hero}"
-        ctk.CTkLabel(
-            self,
-            text=text,
+        italic = ctk.CTkFont(family=T.ui_family(), size=12, slant="italic")
+
+        player_label = ctk.CTkLabel(
+            line,
+            text=player,
             text_color=T.TEXT_MUTED,
-            font=ctk.CTkFont(family=T.ui_family(), size=12, slant="italic"),
+            font=italic,
             anchor="w",
-        ).grid(row=0, column=1, padx=(8, 0), pady=3, sticky="w")
+        )
+        player_label.pack(side="left")
+        _bind_player_click(player_label, player, self._on_player_click)
+
+        ctk.CTkLabel(
+            line,
+            text=f"  →  {hero}",
+            text_color=T.TEXT_MUTED,
+            font=italic,
+            anchor="w",
+        ).pack(side="left")
 
         ts = entry.timestamp.split(" ")[-1] if entry.timestamp else ""
         ctk.CTkLabel(
@@ -155,13 +224,19 @@ def _load_chat_colors() -> dict[str, str]:
 
 
 class FeedPanel(ctk.CTkFrame):
-    def __init__(self, parent: tk.Widget) -> None:
+    def __init__(
+        self,
+        parent: tk.Widget,
+        *,
+        on_player_click: Callable[[str], None] | None = None,
+    ) -> None:
         super().__init__(
             parent,
             fg_color=T.BG_CARD,
             corner_radius=T.R_CARD,
             border_width=0,
         )
+        self._on_player_click = on_player_click
         self._count = 0
         self._rows: list[tk.Widget] = []
         self._auto_scroll = tk.BooleanVar(value=True)
@@ -187,12 +262,6 @@ class FeedPanel(ctk.CTkFrame):
     def _build(self) -> None:
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.pack(fill="x", padx=18, pady=(14, 8))
-        ctk.CTkLabel(
-            header,
-            text="Live Feed",
-            font=T.font_title(),
-            text_color=T.TEXT_PRIMARY,
-        ).pack(side="left")
 
         self._count_pill = ctk.CTkLabel(
             header,
@@ -317,9 +386,14 @@ class FeedPanel(ctk.CTkFrame):
             self._rows.append(divider)
 
         row: tk.Widget = (
-            HeroRow(self._list, entry)
+            HeroRow(self._list, entry, on_player_click=self._on_player_click)
             if entry.category == "hero"
-            else MessageRow(self._list, entry, self._dot_color_for(entry))
+            else MessageRow(
+                self._list,
+                entry,
+                self._dot_color_for(entry),
+                on_player_click=self._on_player_click,
+            )
         )
         row.pack(fill="x")
         self._rows.append(row)

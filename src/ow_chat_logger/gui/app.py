@@ -16,7 +16,7 @@ from ow_chat_logger.gui.config_io import (
     open_log_folder,
     save_ui_config,
 )
-from ow_chat_logger.gui.feed_panel import FeedPanel
+from ow_chat_logger.gui.main_tabs import MainTabs
 from ow_chat_logger.gui.settings_panel import SettingsPanel
 
 # ── Appearance mode cycling ──────────────────────────────────────────────────
@@ -64,6 +64,7 @@ class OWChatLoggerApp(ctk.CTk):
             self._app_icon = icon  # retain reference (Tk image registry is weak)
             self.iconphoto(True, icon)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.bind_all("<Control-f>", lambda _e: self._tabs.show_search())
         self._start_polling()
 
     # ── UI construction ───────────────────────────────────────────────────────
@@ -180,8 +181,18 @@ class OWChatLoggerApp(ctk.CTk):
         self._stop_btn.pack(side="left")
 
     def _build_feed(self) -> None:
-        self._feed_panel = FeedPanel(self)
-        self._feed_panel.pack(fill="both", expand=True, padx=16, pady=(12, 8))
+        from ow_chat_logger.config import get_app_paths
+
+        paths = get_app_paths()
+        self._tabs = MainTabs(
+            self,
+            chat_log_path=paths.chat_log,
+            hero_log_path=paths.hero_log,
+            on_player_click=lambda name: self._tabs.show_search(player=name),
+        )
+        self._tabs.pack(fill="both", expand=True, padx=16, pady=(12, 8))
+        # Expose the feed for message polling (unchanged call sites below).
+        self._feed_panel = self._tabs.feed_panel
 
     def _build_bottom_bar(self) -> None:
         bar = ctk.CTkFrame(self, height=56, fg_color=T.BG_CHROME, corner_radius=0)
