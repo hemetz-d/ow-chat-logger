@@ -219,9 +219,7 @@ class MessageRow(ctk.CTkFrame):
         if self._selected == selected:
             return
         self._selected = selected
-        self._player_label.configure(
-            text_color=T.ACCENT if selected else T.TEXT_PRIMARY
-        )
+        self._player_label.configure(text_color=T.ACCENT if selected else T.TEXT_PRIMARY)
         self._apply_bg()
 
     def flash_new_badge(self) -> None:
@@ -418,7 +416,9 @@ class _FilterPill(ctk.CTkFrame):
             text_color=T.TEXT_SECONDARY,
             font=T.font_caption(),
         )
-        self._label_widget.grid(row=0, column=col, padx=(0 if dot_color is not None else 11, 6), pady=4, sticky="w")
+        self._label_widget.grid(
+            row=0, column=col, padx=(0 if dot_color is not None else 11, 6), pady=4, sticky="w"
+        )
         col += 1
         self._count_widget = ctk.CTkLabel(
             self,
@@ -645,9 +645,7 @@ class PlayerSidePanel(ctk.CTkFrame):
         open_btn.pack(side="right", padx=(0, 6), pady=14)
 
         # Hairline under the header
-        ctk.CTkFrame(self, height=1, fg_color=T.BORDER_HAIRLINE, corner_radius=0).pack(
-            fill="x"
-        )
+        ctk.CTkFrame(self, height=1, fg_color=T.BORDER_HAIRLINE, corner_radius=0).pack(fill="x")
 
         # Body — stats grid + recent messages
         body = ctk.CTkFrame(self, fg_color="transparent")
@@ -814,9 +812,7 @@ class PlayerSidePanel(ctk.CTkFrame):
             top.pack(fill="x", pady=(6, 1))
             channel = (m.get("channel") or "").lower()
             dot_color = (
-                T.CHAT_TEAM if channel == "team"
-                else T.CHAT_ALL if channel == "all"
-                else T.TEXT_DIM
+                T.CHAT_TEAM if channel == "team" else T.CHAT_ALL if channel == "all" else T.TEXT_DIM
             )
             ctk.CTkLabel(
                 top,
@@ -907,9 +903,7 @@ class OnboardingSidePanel(ctk.CTkFrame):
             font=ctk.CTkFont(family=T.ui_family(), size=13, weight="bold"),
         ).pack(side="left", padx=20, pady=14)
 
-        ctk.CTkFrame(self, height=1, fg_color=T.BORDER_HAIRLINE, corner_radius=0).pack(
-            fill="x"
-        )
+        ctk.CTkFrame(self, height=1, fg_color=T.BORDER_HAIRLINE, corner_radius=0).pack(fill="x")
 
         # Body — config rows + accent-tinted tip card
         body = ctk.CTkFrame(self, fg_color="transparent")
@@ -974,7 +968,9 @@ class OnboardingSidePanel(ctk.CTkFrame):
         self._row_value(self._rows_wrap, "Interval", interval_text, mono=True)
 
         self._row_chip(self._rows_wrap, "Team color", chat_colors.get("team", T.pick(T.CHAT_TEAM)))
-        self._row_chip(self._rows_wrap, "All chat color", chat_colors.get("all", T.pick(T.CHAT_ALL)))
+        self._row_chip(
+            self._rows_wrap, "All chat color", chat_colors.get("all", T.pick(T.CHAT_ALL))
+        )
 
     # ── Row primitives ───────────────────────────────────────────────────
 
@@ -983,9 +979,7 @@ class OnboardingSidePanel(ctk.CTkFrame):
         row.pack(fill="x", pady=4)
         return row
 
-    def _row_value(
-        self, parent: tk.Widget, label: str, value: str, *, mono: bool = False
-    ) -> None:
+    def _row_value(self, parent: tk.Widget, label: str, value: str, *, mono: bool = False) -> None:
         row = self._row_shell(parent)
         ctk.CTkLabel(
             row,
@@ -1336,8 +1330,12 @@ class FeedPanel(ctk.CTkFrame):
 
     def _update_pill_counts(self) -> None:
         self._filter_pills["all"].set_count(self._count if self._count > 0 else None)
-        self._filter_pills["team"].set_count(self._counts["team"] if self._counts["team"] > 0 else None)
-        self._filter_pills["all_chat"].set_count(self._counts["all"] if self._counts["all"] > 0 else None)
+        self._filter_pills["team"].set_count(
+            self._counts["team"] if self._counts["team"] > 0 else None
+        )
+        self._filter_pills["all_chat"].set_count(
+            self._counts["all"] if self._counts["all"] > 0 else None
+        )
 
     # ── Message append / clear ────────────────────────────────────────────────
 
@@ -1530,9 +1528,7 @@ class FeedPanel(ctk.CTkFrame):
                 self.after_cancel(self._wrap_after_id)
             except Exception:
                 pass
-        self._wrap_after_id = self.after(
-            self._RESIZE_DEBOUNCE_MS, self._flush_row_wraplength
-        )
+        self._wrap_after_id = self.after(self._RESIZE_DEBOUNCE_MS, self._flush_row_wraplength)
 
     def _flush_row_wraplength(self) -> None:
         self._wrap_after_id = None

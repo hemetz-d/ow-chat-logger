@@ -32,60 +32,67 @@ TEXT_DIM = ("#aeaeb2", "#636366")
 # pick up the new values on the next redraw, so :func:`set_accent` followed by a
 # widget-tree refresh is enough to retheme the whole app.
 ACCENT_PRESET_NAMES: tuple[str, ...] = (
-    "blue", "indigo", "violet", "emerald", "amber", "rose", "pink", "cyan",
+    "blue",
+    "indigo",
+    "violet",
+    "emerald",
+    "amber",
+    "rose",
+    "pink",
+    "cyan",
 )
 
 _ACCENT_PRESETS: dict[str, dict[str, tuple[str, str]]] = {
     "blue": {
-        "main":   ("#007AFF", "#0A84FF"),  # Apple system blue (default)
-        "hover":  ("#0062cc", "#3395ff"),
+        "main": ("#007AFF", "#0A84FF"),  # Apple system blue (default)
+        "hover": ("#0062cc", "#3395ff"),
         "subtle": ("#e8f0fe", "#1e2a3f"),
-        "fg":     ("#ffffff", "#ffffff"),
+        "fg": ("#ffffff", "#ffffff"),
     },
     "indigo": {
-        "main":   ("#4f46e5", "#6366f1"),
-        "hover":  ("#4338ca", "#818cf8"),
+        "main": ("#4f46e5", "#6366f1"),
+        "hover": ("#4338ca", "#818cf8"),
         "subtle": ("#eef2ff", "#1f1f3a"),
-        "fg":     ("#ffffff", "#ffffff"),
+        "fg": ("#ffffff", "#ffffff"),
     },
     "violet": {
-        "main":   ("#7c3aed", "#8b5cf6"),
-        "hover":  ("#6d28d9", "#a78bfa"),
+        "main": ("#7c3aed", "#8b5cf6"),
+        "hover": ("#6d28d9", "#a78bfa"),
         "subtle": ("#f3e8ff", "#2e1f48"),
-        "fg":     ("#ffffff", "#ffffff"),
+        "fg": ("#ffffff", "#ffffff"),
     },
     "emerald": {
-        "main":   ("#16a34a", "#22c55e"),
-        "hover":  ("#15803d", "#4ade80"),
+        "main": ("#16a34a", "#22c55e"),
+        "hover": ("#15803d", "#4ade80"),
         "subtle": ("#dcfce7", "#0a2e1a"),
-        "fg":     ("#ffffff", "#0a0a0b"),
+        "fg": ("#ffffff", "#0a0a0b"),
     },
     "amber": {
-        "main":   ("#d97706", "#f59e0b"),
-        "hover":  ("#b45309", "#fbbf24"),
+        "main": ("#d97706", "#f59e0b"),
+        "hover": ("#b45309", "#fbbf24"),
         "subtle": ("#fef3c7", "#3b2a06"),
-        "fg":     ("#ffffff", "#0a0a0b"),
+        "fg": ("#ffffff", "#0a0a0b"),
     },
     "rose": {
-        "main":   ("#e11d48", "#f43f5e"),
-        "hover":  ("#be123c", "#fb7185"),
+        "main": ("#e11d48", "#f43f5e"),
+        "hover": ("#be123c", "#fb7185"),
         "subtle": ("#ffe4e6", "#3a141d"),
-        "fg":     ("#ffffff", "#ffffff"),
+        "fg": ("#ffffff", "#ffffff"),
     },
     "pink": {
         # Distinct from rose (which leans red) — true magenta-pink, pulled
         # from Tailwind's pink-600/500 pair so it reads cleanly against both
         # light and dark surfaces.
-        "main":   ("#db2777", "#ec4899"),
-        "hover":  ("#be185d", "#f472b6"),
+        "main": ("#db2777", "#ec4899"),
+        "hover": ("#be185d", "#f472b6"),
         "subtle": ("#fce7f3", "#3a0f24"),
-        "fg":     ("#ffffff", "#ffffff"),
+        "fg": ("#ffffff", "#ffffff"),
     },
     "cyan": {
-        "main":   ("#0891b2", "#06b6d4"),
-        "hover":  ("#0e7490", "#22d3ee"),
+        "main": ("#0891b2", "#06b6d4"),
+        "hover": ("#0e7490", "#22d3ee"),
         "subtle": ("#cffafe", "#0a2a32"),
-        "fg":     ("#ffffff", "#0a0a0b"),
+        "fg": ("#ffffff", "#0a0a0b"),
     },
 }
 
@@ -124,6 +131,7 @@ def accent_preset_swatch(name: str) -> str:
     """Return the dark-mode hex of a preset's main color — used for swatches."""
     preset = _ACCENT_PRESETS.get(name) or _ACCENT_PRESETS["blue"]
     return preset["main"][1]
+
 
 # Semantic (System colors)
 SUCCESS = ("#34C759", "#30D158")
@@ -308,9 +316,7 @@ def refresh_chrome(window) -> None:
         # 19 was the pre-1903 attribute id; try both for safety on older builds.
         for attr in (20, 19):
             try:
-                windll.dwmapi.DwmSetWindowAttribute(
-                    hwnd, attr, byref(dark), sizeof(dark)
-                )
+                windll.dwmapi.DwmSetWindowAttribute(hwnd, attr, byref(dark), sizeof(dark))
                 break
             except Exception:
                 continue

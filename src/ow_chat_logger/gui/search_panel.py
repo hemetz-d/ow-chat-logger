@@ -166,9 +166,9 @@ class _SearchResultRow(ctk.CTkFrame):
         wrap = ctk.CTkFrame(self, fg_color="transparent")
 
         if not query:
-            ctk.CTkLabel(
-                wrap, text=text, text_color=base_color, font=base_font, anchor="w"
-            ).pack(side="left")
+            ctk.CTkLabel(wrap, text=text, text_color=base_color, font=base_font, anchor="w").pack(
+                side="left"
+            )
             self._player_pre = None
             self._player_match = None
             self._player_post = None
@@ -176,9 +176,9 @@ class _SearchResultRow(ctk.CTkFrame):
 
         idx = text.lower().find(query.lower())
         if idx < 0:
-            ctk.CTkLabel(
-                wrap, text=text, text_color=base_color, font=base_font, anchor="w"
-            ).pack(side="left")
+            ctk.CTkLabel(wrap, text=text, text_color=base_color, font=base_font, anchor="w").pack(
+                side="left"
+            )
             self._player_pre = None
             self._player_match = None
             self._player_post = None
@@ -187,9 +187,7 @@ class _SearchResultRow(ctk.CTkFrame):
         pre = text[:idx]
         match = text[idx : idx + len(query)]
         post = text[idx + len(query) :]
-        self._player_pre = ctk.CTkLabel(
-            wrap, text=pre, text_color=base_color, font=base_font
-        )
+        self._player_pre = ctk.CTkLabel(wrap, text=pre, text_color=base_color, font=base_font)
         self._player_pre.pack(side="left")
         # Highlighted span — accent bg + accentFg fg + small radius.
         self._player_match = ctk.CTkLabel(
@@ -202,9 +200,7 @@ class _SearchResultRow(ctk.CTkFrame):
             padx=3,
         )
         self._player_match.pack(side="left")
-        self._player_post = ctk.CTkLabel(
-            wrap, text=post, text_color=base_color, font=base_font
-        )
+        self._player_post = ctk.CTkLabel(wrap, text=post, text_color=base_color, font=base_font)
         self._player_post.pack(side="left")
         return wrap
 
@@ -277,9 +273,7 @@ class _SearchResultRow(ctk.CTkFrame):
             # Solo-label case (no highlight) — find the inner CTkLabel.
             for child in self._player_widget.winfo_children():
                 if isinstance(child, ctk.CTkLabel):
-                    child.configure(
-                        text_color=T.ACCENT if selected else T.TEXT_PRIMARY
-                    )
+                    child.configure(text_color=T.ACCENT if selected else T.TEXT_PRIMARY)
         self._apply_bg()
 
     def set_body_wraplength(self, wraplength: int) -> None:
@@ -704,9 +698,7 @@ class SearchView(ctk.CTkFrame):
             self._player_chip.pack_forget()
             self._player_name_label.pack_forget()
             self._player_close_btn.pack_forget()
-            self._query_entry.pack(
-                side="left", fill="x", expand=True, padx=(0, 8)
-            )
+            self._query_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
     # ── Query plumbing ──────────────────────────────────────────────────────
 
@@ -747,9 +739,7 @@ class SearchView(ctk.CTkFrame):
 
     # ── Filtering ───────────────────────────────────────────────────────────
 
-    def _apply_filters(
-        self, results: list[SearchResult]
-    ) -> list[SearchResult]:
+    def _apply_filters(self, results: list[SearchResult]) -> list[SearchResult]:
         active_channels = {k for k, v in self._channel_on.items() if v.get()}
         time_cutoff = self._time_cutoff()
 
@@ -757,9 +747,7 @@ class SearchView(ctk.CTkFrame):
         for r in results:
             if r.source not in active_channels:
                 continue
-            if time_cutoff is not None and not self._within_cutoff(
-                r.timestamp, time_cutoff
-            ):
+            if time_cutoff is not None and not self._within_cutoff(r.timestamp, time_cutoff):
                 continue
             out.append(r)
         return out
@@ -837,10 +825,7 @@ class SearchView(ctk.CTkFrame):
             sub = "Try a different query."
         else:
             title = "Search your chat log"
-            sub = (
-                f"Type at least {_MIN_QUERY_LEN} characters to search "
-                "by player or message text."
-            )
+            sub = f"Type at least {_MIN_QUERY_LEN} characters to search by player or message text."
 
         ctk.CTkLabel(
             frame,
@@ -988,9 +973,7 @@ class SearchView(ctk.CTkFrame):
                 self.after_cancel(self._wrap_after_id)
             except Exception:
                 pass
-        self._wrap_after_id = self.after(
-            self._RESIZE_DEBOUNCE_MS, self._flush_row_wraplength
-        )
+        self._wrap_after_id = self.after(self._RESIZE_DEBOUNCE_MS, self._flush_row_wraplength)
 
     def _flush_row_wraplength(self) -> None:
         self._wrap_after_id = None

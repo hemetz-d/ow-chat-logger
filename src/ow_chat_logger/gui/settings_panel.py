@@ -197,7 +197,6 @@ class SettingsPanel(ctk.CTkFrame):
         if self._on_accent_change_cb is not None:
             self._on_accent_change_cb(name)
 
-
     # -- Capture speed --
 
     def _build_capture_speed(self) -> None:
@@ -236,9 +235,7 @@ class SettingsPanel(ctk.CTkFrame):
             font=T.font_caption(),
         ).pack(side="right", padx=(6, 0))
         self._vars.setdefault("capture_interval", tk.StringVar())
-        self._custom_speed_entry = self._entry(
-            custom_wrap, self._vars["capture_interval"], 70
-        )
+        self._custom_speed_entry = self._entry(custom_wrap, self._vars["capture_interval"], 70)
         self._custom_speed_entry.pack(side="right")
         # Default segmented value is "Normal" (a preset) so the entry starts
         # locked. ``load()`` flips it editable if the saved interval doesn't
@@ -556,9 +553,9 @@ class SettingsPanel(ctk.CTkFrame):
         Mirrors the toolbar's Stop/Start anchor pattern.
         """
         # Hairline separator above the footer so it reads as its own surface.
-        ctk.CTkFrame(
-            self, height=1, fg_color=T.BORDER_HAIRLINE, corner_radius=0
-        ).pack(side="bottom", fill="x")
+        ctk.CTkFrame(self, height=1, fg_color=T.BORDER_HAIRLINE, corner_radius=0).pack(
+            side="bottom", fill="x"
+        )
 
         self._footer = ctk.CTkFrame(self, fg_color=T.BG_CHROME, corner_radius=0)
         self._footer.pack(side="bottom", fill="x")
