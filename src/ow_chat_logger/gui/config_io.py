@@ -91,11 +91,3 @@ def open_config_folder() -> None:
     folder = default_appdata_dir()
     folder.mkdir(parents=True, exist_ok=True)
     os.startfile(str(folder))
-
-
-def open_log_folder() -> None:
-    from ow_chat_logger.config import get_app_paths
-
-    folder = get_app_paths().log_dir
-    folder.mkdir(parents=True, exist_ok=True)
-    os.startfile(str(folder))
