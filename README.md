@@ -13,18 +13,23 @@ and Tesseract are available as optional fallbacks.
 
 ---
 
-## Screenshots
+## At a glance
 
 The GUI ships in three tabs — **Live Feed**, **Search**, and **Settings** — with
 a configurable accent system (8 presets) that propagates through every surface.
 
-| | |
-|---|---|
-| ![Live Feed](docs/screenshots/live-feed.png) | ![Search](docs/screenshots/search.png) |
-| Live Feed — incoming messages with channel-colored dots, NEW badge on fresh rows, click a player to open their full history. | Search — virtualized `tk.Text` results over the entire SQLite store, channel + time-window filters, inline match highlighting. |
+- **Live Feed** — incoming messages with channel-colored dots, a "NEW" badge
+  on fresh rows, and a side panel that opens with the player's full history
+  when you click their name.
+- **Search** — virtualized `tk.Text` results over the entire SQLite store,
+  with channel + time-window filters and inline match highlighting.
+- **Settings** — region picker, capture-interval presets (Slow / Normal /
+  Fast / Custom), accent picker, and an Advanced section for raw HSV / OCR
+  pipeline tuning.
 
-> Screenshots are stored under [docs/screenshots/](docs/screenshots/). Capture
-> conventions are documented there.
+> Screenshot conventions are documented under
+> [docs/screenshots/](docs/screenshots/) — captures are dropped into that
+> folder and surfaced inline here once available.
 
 ---
 
