@@ -20,7 +20,6 @@ from ow_chat_logger.gui.config_io import (
     open_config_folder,
     save_ui_config,
 )
-from ow_chat_logger.gui.region_picker import RegionPickerOverlay
 
 # Capture-speed presets shown as segmented-button options
 _SPEED_PRESETS: dict[str, float] = {
@@ -32,22 +31,38 @@ _SPEED_ORDER = ("Fast", "Normal", "Slow", "Custom")
 _SPEED_EPS = 0.01  # tolerance when matching stored interval to a preset
 
 
-class SettingsPanel(ctk.CTkScrollableFrame):
-    """Settings panel: user-friendly up top, Advanced section collapsed."""
+class SettingsPanel(ctk.CTkFrame):
+    """Settings panel — scrollable content with a sticky action footer.
+
+    The outer frame splits into two layers:
+      * ``self._footer`` — pinned to the bottom, hosts Save / Reset / Config
+        folder so the primary actions stay reachable no matter how far the
+        user has scrolled or how much Advanced content is unfolded.
+      * ``self._scroll`` — the actual scrollable area where every section
+        (Accent, Capture speed, Chat colors, Advanced) lives.
+
+    Previously the panel was itself a ``CTkScrollableFrame`` and the actions
+    were packed inline at the end. That meant unfolding Advanced caused its
+    body to appear *below* the action row (bug), and Save/Reset stayed off
+    screen for users who scrolled to fiddle with HSV bounds.
+    """
 
     def __init__(
         self,
         parent: tk.Widget,
         on_save: Callable[[], None] | None = None,
+        on_accent_change: Callable[[str], None] | None = None,
+        current_accent: str = "blue",
     ) -> None:
         super().__init__(
             parent,
             fg_color=T.BG_ROOT,
             corner_radius=0,
-            scrollbar_button_color=T.BORDER_HOVER,
-            scrollbar_button_hover_color=T.TEXT_MUTED,
         )
         self._on_save_cb = on_save
+        self._on_accent_change_cb = on_accent_change
+        self._current_accent = current_accent
+        self._accent_swatches: dict[str, ctk.CTkFrame] = {}
         # Config-backed StringVars — shared between user-friendly + Advanced UI
         self._vars: dict[str, tk.StringVar] = {}
         self._hsv_vars: dict[str, list[tk.StringVar]] = {}
@@ -55,13 +70,16 @@ class SettingsPanel(ctk.CTkScrollableFrame):
         self._chat_hex: dict[str, str] = {"team": "#0A84FF", "all": "#FFD60A"}
         self._chat_tol: dict[str, tk.IntVar] = {}
         self._chat_swatches: dict[str, ctk.CTkButton] = {}
-        self._region_preview: ctk.CTkCanvas | None = None
-        self._region_text: ctk.CTkLabel | None = None
         self._speed_var = tk.StringVar(value="Normal")
         self._custom_speed_entry: ctk.CTkEntry | None = None
         self._advanced_open = tk.BooleanVar(value=False)
         self._advanced_body: ctk.CTkFrame | None = None
         self._advanced_toggle_btn: ctk.CTkButton | None = None
+        # Save-confirmation toast — accent-tinted pill that pops above the
+        # footer for ~2.5s. Replaces the native ``mb.showinfo`` modal that
+        # didn't match the app's visual language.
+        self._toast: ctk.CTkFrame | None = None
+        self._toast_after_id: str | None = None
 
         self._build()
         self.load()
@@ -70,7 +88,7 @@ class SettingsPanel(ctk.CTkScrollableFrame):
 
     def _section_label(self, text: str) -> None:
         ctk.CTkLabel(
-            self,
+            self._scroll,
             text=text,
             font=T.font_section(),
             text_color=T.TEXT_MUTED,
@@ -79,7 +97,7 @@ class SettingsPanel(ctk.CTkScrollableFrame):
 
     def _card(self) -> ctk.CTkFrame:
         card = ctk.CTkFrame(
-            self,
+            self._scroll,
             fg_color=T.BG_CARD,
             corner_radius=T.R_CARD,
             border_width=0,
@@ -104,106 +122,81 @@ class SettingsPanel(ctk.CTkScrollableFrame):
     # ── Build ─────────────────────────────────────────────────────────────────
 
     def _build(self) -> None:
-        self._build_capture_region()
+        # Screen-region StringVars must exist before the Advanced section is
+        # built (it binds them to read-only entries). The user-friendly path
+        # no longer surfaces a region picker — the chat region is fixed by
+        # the in-game UI, so it's a static value the user shouldn't have to
+        # think about. Edge-case overrides happen via the Advanced section.
+        for i in range(4):
+            self._vars[f"screen_region_{i}"] = tk.StringVar()
+
+        # Footer first (side="bottom" before any expanding sibling), then the
+        # scrollable content fills the rest. Order matters in Tk pack — if
+        # the scroll were packed first with expand=True, the footer might be
+        # squeezed off-screen on tight window heights.
+        self._build_footer()
+        self._scroll = ctk.CTkScrollableFrame(
+            self,
+            fg_color=T.BG_ROOT,
+            corner_radius=0,
+            scrollbar_button_color=T.BORDER_HOVER,
+            scrollbar_button_hover_color=T.TEXT_MUTED,
+        )
+        self._scroll.pack(side="top", fill="both", expand=True)
+
+        self._build_accent()
         self._build_capture_speed()
         self._build_chat_colors()
         self._build_advanced()
-        self._build_actions()
 
-    # -- Capture region --
+    # -- Accent (cosmetic) --
 
-    def _build_capture_region(self) -> None:
-        self._section_label("CAPTURE REGION")
+    def _build_accent(self) -> None:
+        self._section_label("ACCENT")
         card = self._card()
 
-        # Preview strip
-        body = ctk.CTkFrame(card, fg_color="transparent")
-        body.pack(fill="x", padx=16, pady=14)
+        row = ctk.CTkFrame(card, fg_color="transparent")
+        row.pack(fill="x", padx=16, pady=14)
 
-        self._region_preview = ctk.CTkCanvas(
-            body,
-            height=70,
-            bg=T.pick(T.BG_ELEV),
-            highlightthickness=1,
-            highlightbackground=T.pick(T.BORDER_HAIRLINE),
-        )
-        self._region_preview.pack(fill="x")
+        for name in T.ACCENT_PRESET_NAMES:
+            color = T.accent_preset_swatch(name)
+            container = ctk.CTkFrame(
+                row,
+                width=44,
+                height=44,
+                fg_color="transparent",
+                border_width=2,
+                border_color=T.ACCENT if name == self._current_accent else T.BORDER_HAIRLINE,
+                corner_radius=10,
+            )
+            container.pack(side="left", padx=(0, 8))
+            container.pack_propagate(False)
 
-        meta = ctk.CTkFrame(card, fg_color="transparent")
-        meta.pack(fill="x", padx=16, pady=(0, 14))
-        self._region_text = ctk.CTkLabel(
-            meta,
-            text="—",
-            text_color=T.TEXT_SECONDARY,
-            font=T.font_small(),
-        )
-        self._region_text.pack(side="left")
-        ctk.CTkButton(
-            meta,
-            text="Pick region",
-            image=I.icon("chevron_right", 14, color=T.ACCENT_FG),
-            compound="right",
-            command=self._open_region_picker,
-            fg_color=T.ACCENT,
-            hover_color=T.ACCENT_HOVER,
-            text_color=T.ACCENT_FG,
-            corner_radius=T.R_BUTTON,
-            height=32,
-            width=120,
-            font=T.font_button(),
-        ).pack(side="right")
+            inner = ctk.CTkButton(
+                container,
+                text="",
+                width=30,
+                height=30,
+                corner_radius=7,
+                fg_color=color,
+                hover_color=color,
+                border_width=0,
+                command=lambda n=name: self._on_accent_click(n),
+            )
+            inner.pack(expand=True, padx=4, pady=4)
+            self._accent_swatches[name] = container
 
-        # Create the 4 region vars now; Advanced binds them as entries later.
-        for i in range(4):
-            var = tk.StringVar()
-            var.trace_add("write", lambda *_a: self._refresh_region_preview())
-            self._vars[f"screen_region_{i}"] = var
-
-    def _refresh_region_preview(self) -> None:
-        if self._region_preview is None or self._region_text is None:
+    def _on_accent_click(self, name: str) -> None:
+        if name == self._current_accent:
             return
-        try:
-            coords = [int(self._vars[f"screen_region_{i}"].get()) for i in range(4)]
-            x, y, w, h = coords
-        except (ValueError, KeyError):
-            self._region_text.configure(text="—")
-            return
+        self._current_accent = name
+        # Update the selection ring on swatches.
+        for n, w in self._accent_swatches.items():
+            w.configure(border_color=T.ACCENT if n == name else T.BORDER_HAIRLINE)
+        # Notify the host to apply + persist + refresh widget colors.
+        if self._on_accent_change_cb is not None:
+            self._on_accent_change_cb(name)
 
-        self._region_text.configure(text=f"{w} × {h}   at ({x}, {y})")
-
-        self._region_preview.delete("all")
-        cw = max(self._region_preview.winfo_width(), 10)
-        ch = 70
-        # Use a nominal screen aspect (16:9) — we just want shape context.
-        screen_w, screen_h = 1920, 1080
-        scale = min((cw - 8) / screen_w, (ch - 8) / screen_h)
-        sw, sh = screen_w * scale, screen_h * scale
-        ox, oy = (cw - sw) / 2, (ch - sh) / 2
-
-        border = T.pick(T.BORDER_HAIRLINE)
-        accent = T.pick(T.ACCENT)
-        self._region_preview.create_rectangle(ox, oy, ox + sw, oy + sh, outline=border)
-        rx = ox + x * scale
-        ry = oy + y * scale
-        rw = w * scale
-        rh = h * scale
-        self._region_preview.create_rectangle(
-            rx,
-            ry,
-            rx + rw,
-            ry + rh,
-            outline=accent,
-            width=2,
-        )
-
-    def _open_region_picker(self) -> None:
-        def _on_pick(x: int, y: int, w: int, h: int) -> None:
-            self._vars["screen_region_0"].set(str(x))
-            self._vars["screen_region_1"].set(str(y))
-            self._vars["screen_region_2"].set(str(w))
-            self._vars["screen_region_3"].set(str(h))
-
-        RegionPickerOverlay(self.winfo_toplevel(), on_pick=_on_pick)
 
     # -- Capture speed --
 
@@ -212,7 +205,7 @@ class SettingsPanel(ctk.CTkScrollableFrame):
         card = self._card()
 
         body = ctk.CTkFrame(card, fg_color="transparent")
-        body.pack(fill="x", padx=16, pady=14)
+        body.pack(fill="x", padx=16, pady=(14, 6))
 
         seg = ctk.CTkSegmentedButton(
             body,
@@ -231,6 +224,9 @@ class SettingsPanel(ctk.CTkScrollableFrame):
         )
         seg.pack(side="left")
 
+        # Seconds entry — always visible, but only editable when "Custom" is
+        # the selected preset. Otherwise it's a read-only mirror of whatever
+        # value the active preset writes into the StringVar.
         custom_wrap = ctk.CTkFrame(body, fg_color="transparent")
         custom_wrap.pack(side="left", padx=(12, 0))
         ctk.CTkLabel(
@@ -239,20 +235,55 @@ class SettingsPanel(ctk.CTkScrollableFrame):
             text_color=T.TEXT_MUTED,
             font=T.font_caption(),
         ).pack(side="right", padx=(6, 0))
+        self._vars.setdefault("capture_interval", tk.StringVar())
         self._custom_speed_entry = self._entry(
-            custom_wrap, self._vars.setdefault("capture_interval", tk.StringVar()), 70
+            custom_wrap, self._vars["capture_interval"], 70
         )
         self._custom_speed_entry.pack(side="right")
-        self._custom_speed_entry.pack_forget()  # hidden unless Custom selected
+        # Default segmented value is "Normal" (a preset) so the entry starts
+        # locked. ``load()`` flips it editable if the saved interval doesn't
+        # match any preset.
+        self._set_speed_entry_editable(False)
+
+        # Hint — same pattern as the Chat colors caption.
+        ctk.CTkLabel(
+            card,
+            text=(
+                "How often the chat area is scanned for new messages. "
+                "Lower values catch messages faster but use more CPU."
+            ),
+            text_color=T.TEXT_MUTED,
+            font=T.font_caption(),
+            anchor="w",
+            justify="left",
+        ).pack(fill="x", padx=16, pady=(0, 14))
 
     def _on_speed_change(self, value: str) -> None:
+        """Handle a click on the segmented Fast/Normal/Slow/Custom control."""
         if value == "Custom":
-            if self._custom_speed_entry is not None:
-                self._custom_speed_entry.pack(side="right")
+            # Keep the previously-displayed value as a starting point and
+            # let the user edit it.
+            self._set_speed_entry_editable(True)
+            return
+        # Preset click → write the canonical interval and lock the entry.
+        self._vars["capture_interval"].set(str(_SPEED_PRESETS[value]))
+        self._set_speed_entry_editable(False)
+
+    def _set_speed_entry_editable(self, editable: bool) -> None:
+        """Toggle the seconds entry between editable and read-only mirroring."""
+        if self._custom_speed_entry is None:
+            return
+        if editable:
+            self._custom_speed_entry.configure(
+                state="normal",
+                text_color=T.TEXT_PRIMARY,
+                border_color=T.BORDER_HAIRLINE,
+            )
         else:
-            if self._custom_speed_entry is not None:
-                self._custom_speed_entry.pack_forget()
-            self._vars["capture_interval"].set(str(_SPEED_PRESETS[value]))
+            self._custom_speed_entry.configure(
+                state="readonly",
+                text_color=T.TEXT_MUTED,
+            )
 
     # -- Chat colors --
 
@@ -369,7 +400,7 @@ class SettingsPanel(ctk.CTkScrollableFrame):
 
     def _build_advanced(self) -> None:
         # Toggle header row
-        header_frame = ctk.CTkFrame(self, fg_color="transparent")
+        header_frame = ctk.CTkFrame(self._scroll, fg_color="transparent")
         header_frame.pack(fill="x", padx=16, pady=(20, 6))
 
         self._advanced_toggle_btn = ctk.CTkButton(
@@ -388,9 +419,12 @@ class SettingsPanel(ctk.CTkScrollableFrame):
         )
         self._advanced_toggle_btn.pack(fill="x")
 
-        # Body card — created once, packed/unpacked on toggle
+        # Body card — created once, packed/unpacked on toggle. Lives inside
+        # the scrollable area, packed last in that area so it sits directly
+        # below the toggle when expanded (instead of floating below the
+        # action footer like in the previous layout).
         self._advanced_body = ctk.CTkFrame(
-            self,
+            self._scroll,
             fg_color=T.BG_CARD,
             corner_radius=T.R_CARD,
             border_width=0,
@@ -399,8 +433,11 @@ class SettingsPanel(ctk.CTkScrollableFrame):
         self._build_advanced_rows(self._advanced_body)
 
     def _build_advanced_rows(self, parent: ctk.CTkFrame) -> None:
-        # Screen region raw entries
-        self._adv_row_header(parent, "Screen region", first=True)
+        # Screen region — read-only. The chat panel position is fixed by the
+        # in-game UI, so the region is the same for every user at a given
+        # resolution. Editable only by hand-editing config.json (the
+        # "Config folder" button in the actions row jumps there).
+        self._adv_row_header(parent, "Screen region (read-only)", first=True)
         self._adv_hstack(
             parent,
             pairs=[
@@ -409,6 +446,7 @@ class SettingsPanel(ctk.CTkScrollableFrame):
                 ("W", self._vars["screen_region_2"]),
                 ("H", self._vars["screen_region_3"]),
             ],
+            readonly=True,
         )
 
         # Capture interval raw
@@ -480,6 +518,7 @@ class SettingsPanel(ctk.CTkScrollableFrame):
         parent: ctk.CTkFrame,
         pairs: list[tuple[str, tk.StringVar]],
         width: int = 54,
+        readonly: bool = False,
     ) -> None:
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", padx=16, pady=(0, 10))
@@ -492,7 +531,10 @@ class SettingsPanel(ctk.CTkScrollableFrame):
                     text_color=T.TEXT_MUTED,
                     font=T.font_caption(),
                 ).pack(side="left", padx=(0, 2))
-            self._entry(row, var, width).pack(side="left", padx=(0, 6))
+            entry = self._entry(row, var, width)
+            if readonly:
+                entry.configure(state="readonly", text_color=T.TEXT_MUTED)
+            entry.pack(side="left", padx=(0, 6))
 
     def _toggle_advanced(self) -> None:
         if self._advanced_body is None or self._advanced_toggle_btn is None:
@@ -505,13 +547,27 @@ class SettingsPanel(ctk.CTkScrollableFrame):
             self._advanced_body.pack_forget()
             self._advanced_toggle_btn.configure(image=I.icon("chevron_right", 14))
 
-    # -- Actions --
+    # -- Footer (sticky action bar) --
 
-    def _build_actions(self) -> None:
-        frame = ctk.CTkFrame(self, fg_color="transparent")
-        frame.pack(fill="x", padx=22, pady=(22, 16))
+    def _build_footer(self) -> None:
+        """Pin Save / Reset / Config folder to the bottom of the panel.
+
+        Always visible regardless of scroll position or Advanced expansion.
+        Mirrors the toolbar's Stop/Start anchor pattern.
+        """
+        # Hairline separator above the footer so it reads as its own surface.
+        ctk.CTkFrame(
+            self, height=1, fg_color=T.BORDER_HAIRLINE, corner_radius=0
+        ).pack(side="bottom", fill="x")
+
+        self._footer = ctk.CTkFrame(self, fg_color=T.BG_CHROME, corner_radius=0)
+        self._footer.pack(side="bottom", fill="x")
+
+        inner = ctk.CTkFrame(self._footer, fg_color="transparent")
+        inner.pack(fill="x", padx=22, pady=14)
+
         ctk.CTkButton(
-            frame,
+            inner,
             text="Save",
             image=I.icon("check", 12, color=T.ACCENT_FG),
             compound="left",
@@ -525,8 +581,8 @@ class SettingsPanel(ctk.CTkScrollableFrame):
             font=T.font_button(),
         ).pack(side="left", padx=(0, 8))
         ctk.CTkButton(
-            frame,
-            text="Reset",
+            inner,
+            text="Reset to defaults",
             command=self.reset,
             fg_color="transparent",
             border_width=1,
@@ -535,11 +591,11 @@ class SettingsPanel(ctk.CTkScrollableFrame):
             text_color=T.TEXT_PRIMARY,
             corner_radius=T.R_PILL,
             height=34,
-            width=90,
+            width=140,
             font=T.font_body(),
         ).pack(side="left", padx=(0, 8))
         ctk.CTkButton(
-            frame,
+            inner,
             text="Config folder",
             command=open_config_folder,
             fg_color="transparent",
@@ -564,17 +620,16 @@ class SettingsPanel(ctk.CTkScrollableFrame):
 
         interval = float(cfg.get("capture_interval", 2.0))
         self._vars["capture_interval"].set(str(interval))
-        # Map interval to segmented-button preset if it matches
-        matched = None
-        for name, val in _SPEED_PRESETS.items():
-            if abs(val - interval) < _SPEED_EPS:
-                matched = name
-                break
+        # Map the saved interval to a preset (or "Custom" when it doesn't
+        # line up). Programmatically setting ``_speed_var`` does NOT fire
+        # the segmented button's ``command`` — it just updates the visual
+        # selection — so we toggle the entry state explicitly.
+        matched = next(
+            (n for n, v in _SPEED_PRESETS.items() if abs(v - interval) < _SPEED_EPS),
+            None,
+        )
         self._speed_var.set(matched or "Custom")
-        if matched is None and self._custom_speed_entry is not None:
-            self._custom_speed_entry.pack(side="right")
-        elif matched is not None and self._custom_speed_entry is not None:
-            self._custom_speed_entry.pack_forget()
+        self._set_speed_entry_editable(matched is None)
 
         self._vars.setdefault("live_message_confirmations_required", tk.StringVar()).set(
             str(cfg.get("live_message_confirmations_required", 2))
@@ -609,8 +664,6 @@ class SettingsPanel(ctk.CTkScrollableFrame):
                     hover_color=self._chat_hex[chat_key],
                 )
 
-        self.after_idle(self._refresh_region_preview)
-
     def reset(self) -> None:
         from ow_chat_logger.config import _DEFAULT_CONFIG
 
@@ -644,7 +697,6 @@ class SettingsPanel(ctk.CTkScrollableFrame):
         )
         self._speed_var.set(matched)
         self._on_speed_change(matched)
-        self._refresh_region_preview()
 
     def collect(self) -> dict | None:
         errors: list[str] = []
@@ -702,9 +754,70 @@ class SettingsPanel(ctk.CTkScrollableFrame):
         reset_config()
         if self._on_save_cb:
             self._on_save_cb()
-        mb.showinfo(
-            "Saved",
-            "Settings saved.\nHSV and pipeline changes apply live; engine or "
-            "language changes require Stop → Start.",
-            parent=self.winfo_toplevel(),
+        self._show_saved_toast()
+
+    # ── Save-feedback toast ──────────────────────────────────────────────────
+
+    def _show_saved_toast(self) -> None:
+        """Brief in-panel confirmation that settings were saved.
+
+        Replaces the native ``mb.showinfo`` dialog with an accent-tinted pill
+        that pops in just above the action footer and auto-dismisses after
+        ~2.5 seconds. Repeated saves cancel any pending hide and refresh the
+        timer so the toast feels stable rather than racing itself.
+        """
+        if self._toast_after_id is not None:
+            try:
+                self.after_cancel(self._toast_after_id)
+            except Exception:
+                pass
+            self._toast_after_id = None
+        if self._toast is not None:
+            try:
+                self._toast.destroy()
+            except Exception:
+                pass
+            self._toast = None
+
+        toast = ctk.CTkFrame(
+            self,
+            fg_color=T.ACCENT_SUBTLE,
+            border_color=T.ACCENT,
+            border_width=1,
+            corner_radius=8,
         )
+        ctk.CTkLabel(
+            toast,
+            text="✓",
+            text_color=T.ACCENT,
+            font=ctk.CTkFont(family=T.ui_family(), size=13, weight="bold"),
+        ).pack(side="left", padx=(14, 8), pady=8)
+        ctk.CTkLabel(
+            toast,
+            text="Settings saved",
+            text_color=T.ACCENT,
+            font=ctk.CTkFont(family=T.ui_family(), size=12, weight="bold"),
+        ).pack(side="left", padx=(0, 16), pady=8)
+
+        # Place centered horizontally, just above the footer's top edge.
+        # ``place`` uses anchor="s" so the toast's bottom edge sits at y.
+        self.update_idletasks()
+        try:
+            panel_w = self.winfo_width()
+            footer_y = self._footer.winfo_y()
+        except tk.TclError:
+            panel_w, footer_y = 600, 500
+        toast.place(x=panel_w // 2, y=footer_y - 12, anchor="s")
+        toast.lift()
+
+        self._toast = toast
+        self._toast_after_id = self.after(2500, self._hide_saved_toast)
+
+    def _hide_saved_toast(self) -> None:
+        self._toast_after_id = None
+        if self._toast is not None:
+            try:
+                self._toast.destroy()
+            except Exception:
+                pass
+            self._toast = None
