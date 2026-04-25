@@ -22,6 +22,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-36 | Capture regression screenshot fixtures for every chat-color preset | structural | 🔴 `open` | — |
 | T-39 | Extend build to produce a Windows installer | structural | 🔴 `open` | — |
 | T-40 | In-app update check / auto-updater for installed builds | structural | 🔴 `open` | — |
+| T-45 | Export chat history as plain `.txt` and `.csv` from the GUI | structural | 🔴 `open` | — |
 | T-43 | Search the persisted chat log for players and past messages | structural | 🟢 `done` | 2026-04-20 |
 | T-25 | Inline error-case dict in `run_benchmark` duplicates `_unavailable_case` | smell | 🟢 `done` | 2026-04-20 |
 | T-10 | Dead commented-out code | smell | 🟢 `done` | 2026-04-20 |
@@ -275,6 +276,40 @@ A single Overwatch match is short and the live feed fits comfortably in memory �
 - Index-backed search (SQLite FTS) — premature until real-world CSV sizes actually become slow; `csv.reader` handles tens of thousands of rows in well under a second on realistic hardware.
 - Any live-feed filtering. The earlier draft of this task proposed filtering the live `FeedPanel` rows; that was explicitly dropped in the rework — sessions are short, the visible feed is already small, and live filter adds cost without value.
 - Context menu on player click (copy name, mute, favorite). Single left-click opens history; richer actions can land later if there is demand.
+
+---
+
+### T-45 · Export chat history as plain `.txt` and `.csv` from the GUI
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** new `src/ow_chat_logger/log_export.py`, `src/ow_chat_logger/gui/settings_panel.py` (or a new "History" panel), `src/ow_chat_logger/config.py` (`get_app_paths().chat_db`)
+- **Completed:** —
+
+When chat history lived in `chat_log.csv` / `hero_log.csv` the user could grep, copy, or share the file directly with any text tool. Moving the canonical store to `chat_log.sqlite` (T-43 follow-up) closes that affordance: the file is opaque outside a SQLite client. We need a first-class export so users can hand history to a teammate, paste it into a bug report, or archive it before wiping the DB.
+
+**Fix direction:**
+- (a) **Pure export core** — new `src/ow_chat_logger/log_export.py` with two entry points sharing a single SQLite read pass:
+  - `export_to_csv(out_path, *, channel_filter=None, since=None, until=None) -> int` — writes a header row (`timestamp, player, text, source`) plus one row per message in chronological order. Returns the row count written.
+  - `export_to_txt(out_path, *, channel_filter=None, since=None, until=None, include_hero=True) -> int` — human-readable rendering: `YYYY-MM-DD HH:MM | TEAM | Alice: hi`, hero rows as `... | HERO | Alice / Mercy`. Same colorless format the console writer uses, minus the ANSI escapes.
+  - Both open the DB via `get_app_paths().chat_db` in read-only mode (`uri=True, mode=ro`). No GUI dependencies — these are unit-testable in isolation.
+- (b) **GUI wiring** — add an "Export history…" button to the Settings tab (or a dedicated History section). Click opens a small modal: format radio (`.csv` / `.txt`), channel filter (Team / All / Hero / All channels), date range (defaults: all time), then a native save dialog seeded with `chat_history_<YYYYMMDD>.csv`. On success show the existing in-panel toast (`Exported N messages to <path>`).
+- (c) **Idempotent / safe** — never modify the DB. Overwrite is fine if the user picks an existing path (the OS save dialog already confirms). If the export fails midway, leave the partial file in place but surface the error in the toast.
+
+**UI notes:**
+- Don't add this to the search panel — search is for finding things, export is for moving the whole (filtered) corpus elsewhere. Settings is the natural home alongside "Open Logs" and "Config folder".
+- A "share with teammate" workflow is the primary use case → default to `.txt` (readable in any text app, paste-able into Discord) and make `.csv` the second option.
+- No streaming progress UI needed for the realistic row counts (tens of thousands max). If exports start blocking the UI noticeably, kick the SQL pass onto a thread and re-check.
+
+**Test surface:** new `tests/test_log_export.py`
+- Seed a tmp DB via the same `_seed_db` helper used in `test_log_search.py`.
+- `export_to_csv`: header row present; one data row per message; chronological order; channel filter restricts source; round-trip via `csv.reader` matches input.
+- `export_to_txt`: timestamp + channel tag + speaker prefix shape per row; hero rows use `/` separator; channel filter excludes correctly; ANSI escapes never present in output.
+- Both: empty DB produces a file with header only (CSV) or empty file (TXT) and returns 0; missing DB raises a clean error rather than crashing.
+
+**Not in scope:**
+- JSON export — easy to add later if a structured-consumer use case materializes; no current ask.
+- Re-import from exported file (would need a separate ingest path; out of scope here, history is append-only at the writer).
+- Automated periodic exports / backup-on-quit — manual export only for now.
 
 ---
 
