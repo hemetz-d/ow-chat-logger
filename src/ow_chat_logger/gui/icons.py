@@ -356,8 +356,8 @@ def icon(name: str, size: int = 16, color: str | tuple[str, str] | None = None):
     if color is None:
         light_color = T.TEXT_PRIMARY[0]
         dark_color = T.TEXT_PRIMARY[1]
-    elif isinstance(color, tuple):
-        light_color, dark_color = color
+    elif isinstance(color, (tuple, list)):
+        light_color, dark_color = color[0], color[1]
     else:
         light_color = dark_color = color
 

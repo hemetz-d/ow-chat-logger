@@ -11,7 +11,7 @@ import csv
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Literal
+from typing import Callable, Iterable, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,45 @@ def _finalize(hits: list[SearchResult], limit: int) -> SearchResultSet:
     return SearchResultSet(results=hits, truncated=truncated)
 
 
-def _read_chat_rows(path: Path) -> Iterable[SearchResult]:
+# ── Cached row reads ──────────────────────────────────────────────────────────
+# CSV scans dominate search latency once a log grows past a few thousand rows.
+# We keep an in-memory cache keyed by (path, kind) and invalidate when either
+# mtime or size changes — that covers append-only growth (live capture) and
+# any external rewrite. The cache is a list so repeated callers can iterate
+# it many times without re-parsing.
+
+_row_cache: dict[tuple[Path, str], tuple[float, int, list[SearchResult]]] = {}
+
+
+def _file_signature(path: Path) -> tuple[float, int]:
+    try:
+        st = path.stat()
+    except OSError:
+        return (0.0, 0)
+    return (st.st_mtime, st.st_size)
+
+
+def _cached_read(
+    path: Path,
+    kind: str,
+    parser: Callable[[Path], Iterable[SearchResult]],
+) -> list[SearchResult]:
+    sig = _file_signature(path)
+    key = (path, kind)
+    cached = _row_cache.get(key)
+    if cached is not None and (cached[0], cached[1]) == sig:
+        return cached[2]
+    rows = list(parser(path))
+    _row_cache[key] = (sig[0], sig[1], rows)
+    return rows
+
+
+def clear_log_search_cache() -> None:
+    """Drop the in-memory CSV cache. Public hook for tests / explicit refresh."""
+    _row_cache.clear()
+
+
+def _parse_chat_rows(path: Path) -> Iterable[SearchResult]:
     for row in _iter_csv(path, expected_cols=4):
         timestamp, player, text, chat_type = row[0], row[1], row[2], row[3]
         source = chat_type.strip().lower()
@@ -129,7 +167,7 @@ def _read_chat_rows(path: Path) -> Iterable[SearchResult]:
         )
 
 
-def _read_hero_rows(path: Path) -> Iterable[SearchResult]:
+def _parse_hero_rows(path: Path) -> Iterable[SearchResult]:
     for row in _iter_csv(path, expected_cols=3):
         yield SearchResult(
             timestamp=row[0],
@@ -137,6 +175,14 @@ def _read_hero_rows(path: Path) -> Iterable[SearchResult]:
             text=row[2],
             source="hero",
         )
+
+
+def _read_chat_rows(path: Path) -> list[SearchResult]:
+    return _cached_read(path, "chat", _parse_chat_rows)
+
+
+def _read_hero_rows(path: Path) -> list[SearchResult]:
+    return _cached_read(path, "hero", _parse_hero_rows)
 
 
 def _iter_csv(path: Path, *, expected_cols: int) -> Iterable[list[str]]:

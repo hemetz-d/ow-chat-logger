@@ -25,6 +25,7 @@ def load_ui_config() -> dict[str, Any]:
         "all_hsv_lower": list(cfg.get("all_hsv_lower", defaults["all_hsv_lower"])),
         "all_hsv_upper": list(cfg.get("all_hsv_upper", defaults["all_hsv_upper"])),
         "ui_appearance_mode": cfg.get("ui_appearance_mode", "system"),
+        "ui_accent": cfg.get("ui_accent", "blue"),
     }
 
 
@@ -51,6 +52,7 @@ def save_ui_config(data: dict[str, Any]) -> None:
         "all_hsv_lower",
         "all_hsv_upper",
         "ui_appearance_mode",
+        "ui_accent",
     )
     for key in top_level_keys:
         if key in data:
@@ -65,6 +67,15 @@ def save_ui_config(data: dict[str, Any]) -> None:
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+
+    # Invalidate the in-process config cache so the very next ``load_config``
+    # call re-reads from disk. Without this, ``save_ui_config`` would write
+    # the file but in-process readers (incl. ``load_ui_config`` itself) would
+    # keep returning the stale cached version until something explicitly
+    # called ``reset_config()``.
+    from ow_chat_logger.config import reset_config
+
+    reset_config()
 
 
 def get_available_ocr_profiles() -> list[str]:
