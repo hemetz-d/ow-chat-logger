@@ -868,16 +868,20 @@ def _load_chat_colors() -> dict[str, str]:
 
 
 class OnboardingSidePanel(ctk.CTkFrame):
-    """300px right column shown before recording starts (Empty V3 design).
+    """Right column shown before recording starts (Empty V3 design).
 
     Mirrors PlayerSidePanel's surface but renders the user's current capture
     config — Region / Interval / Team color / All chat color — plus an
     accent-tinted Tip card. Mutually exclusive with the player side panel:
     onboarding shows when the feed is empty, player shows when a row is
     selected.
+
+    Narrower than ``PlayerSidePanel`` (which needs room for a stats grid +
+    recent messages list) so the empty live feed reads as the primary focus
+    on first launch.
     """
 
-    WIDTH = 300
+    WIDTH = 285
 
     def __init__(self, parent: tk.Widget) -> None:
         super().__init__(

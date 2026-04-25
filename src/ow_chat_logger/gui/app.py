@@ -11,7 +11,6 @@ from ow_chat_logger.gui import theme as T
 from ow_chat_logger.gui.backend_bridge import BackendBridge, StatusEvent
 from ow_chat_logger.gui.config_io import (
     load_ui_config,
-    open_log_folder,
     save_ui_config,
 )
 from ow_chat_logger.gui.main_tabs import MainTabs
@@ -34,7 +33,7 @@ def _statusbar_sep(parent) -> None:
         text="·",
         text_color=T.TEXT_DIM,
         font=T.font_caption(),
-    ).pack(side="left", padx=(0, 14))
+    ).pack(side="left", padx=(0, 18))
 
 
 # ── Main application window ───────────────────────────────────────────────────
@@ -265,7 +264,7 @@ class OWChatLoggerApp(ctk.CTk):
 
         # Left group: live indicator + session stats (Region · Interval · OCR)
         left = ctk.CTkFrame(content, fg_color="transparent")
-        left.grid(row=0, column=0, sticky="w", padx=(20, 0), pady=4)
+        left.grid(row=0, column=0, sticky="w", padx=(24, 0), pady=4)
 
         # Live/idle indicator — mirrors the Console status bar's leading dot.
         self._statusbar_dot = ctk.CTkLabel(
@@ -281,7 +280,9 @@ class OWChatLoggerApp(ctk.CTk):
             text_color=T.TEXT_PRIMARY,
             font=T.font_caption(),
         )
-        self._statusbar_label.pack(side="left", padx=(0, 12))
+        # Keep the "Idle/Live" word visually grouped with its dot; the
+        # session-stats group starts after a separator below.
+        self._statusbar_label.pack(side="left", padx=(0, 18))
 
         # Session stats — derived from saved config. Updated on settings save.
         stats = self._format_statusbar_stats()
@@ -298,22 +299,9 @@ class OWChatLoggerApp(ctk.CTk):
             lbl.pack(side="left")
             self._statusbar_stats_labels.append(lbl)
 
-        # Right group: open logs + appearance toggle + settings icon (subtle text-style)
+        # Right group: appearance toggle + settings icon (subtle text-style)
         right = ctk.CTkFrame(content, fg_color="transparent")
-        right.grid(row=0, column=2, sticky="e", padx=(12, 16), pady=4)
-
-        ctk.CTkButton(
-            right,
-            text="Open Logs",
-            width=0,
-            height=24,
-            corner_radius=6,
-            fg_color="transparent",
-            hover_color=T.BG_ELEV,
-            text_color=T.TEXT_SECONDARY,
-            font=T.font_caption(),
-            command=open_log_folder,
-        ).pack(side="left", padx=(0, 4))
+        right.grid(row=0, column=2, sticky="e", padx=(12, 22), pady=4)
 
         self._mode_btn = ctk.CTkButton(
             right,
@@ -329,7 +317,7 @@ class OWChatLoggerApp(ctk.CTk):
             font=T.font_caption(),
             command=self._cycle_appearance_mode,
         )
-        self._mode_btn.pack(side="left", padx=(0, 4))
+        self._mode_btn.pack(side="left", padx=(0, 10))
 
         ctk.CTkButton(
             right,
@@ -522,6 +510,13 @@ class OWChatLoggerApp(ctk.CTk):
         # color args. CTk holds references to the (light, dark) lists, which
         # we mutated in place — but it only re-reads them on a redraw cycle.
         self._refresh_widget_colors()
+        # The search results widget is a raw tk.Text with Python-managed tag
+        # colors — it sits outside CTk's redraw chain, so explicitly nudge it
+        # to re-pick its tag colors from the (now mutated) accent palette.
+        try:
+            self._tabs.search_view._apply_mode_colors()
+        except Exception:
+            pass
         # Also push a fresh status update so the chip dot/label pick up the
         # new accent without waiting for a backend status event.
         self._set_status(self._status_kind, self._status_label.cget("text"))
