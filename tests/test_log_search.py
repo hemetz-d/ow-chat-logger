@@ -1,53 +1,106 @@
-import csv
+"""Tests for the SQLite-backed search layer.
+
+The behavior contract that lives in this file is the same one we had under
+the old CSV layout — channel filters, match fields, case insensitivity,
+exact-match history, limit + truncation, newest-first ordering, missing-file
+empty result. Only the fixture mechanism changes: instead of writing CSVs
+and pointing log_search at them, we seed the SQLite ``messages`` table
+directly via ``_seed_db``.
+"""
+
+from __future__ import annotations
+
+import sqlite3
 from pathlib import Path
 
 import pytest
 
+from ow_chat_logger._chat_db import open_db
 from ow_chat_logger.log_search import (
     SearchResult,
     SearchResultSet,
+    clear_log_search_cache,
     history_for_player,
     search_logs,
 )
 
 
-def _write_csv(path: Path, rows: list[list[str]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as fh:
-        csv.writer(fh).writerows(rows)
+def _seed_db(
+    db_path: Path,
+    *,
+    chat_rows: list[tuple[str, str, str, str]],
+    hero_rows: list[tuple[str, str, str]],
+) -> None:
+    """Insert chat + hero rows directly into the SQLite store.
+
+    ``chat_rows`` are ``(timestamp, player, text, chat_type)`` tuples;
+    ``hero_rows`` are ``(timestamp, player, hero_name)``. Rows with an
+    invalid ``chat_type`` (anything outside {team, all, hero}) are skipped
+    silently — this keeps the same "tolerant of bad data" surface that the
+    old ``_write_csv``-based fixture had, without making the production
+    writer permissive.
+    """
+    conn = open_db(db_path)
+    try:
+        for ts, player, text, chat_type in chat_rows:
+            source = chat_type.strip().lower()
+            if source not in ("team", "all"):
+                continue
+            conn.execute(
+                "INSERT INTO messages "
+                "(timestamp, player, player_lc, text, text_lc, source) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (ts, player, player.lower(), text, text.lower(), source),
+            )
+        for ts, player, hero_name in hero_rows:
+            conn.execute(
+                "INSERT INTO messages "
+                "(timestamp, player, player_lc, text, text_lc, source) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (ts, player, player.lower(), hero_name, hero_name.lower(), "hero"),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_log_search_cache():
+    """Drop any cached connections between tests so paths don't collide."""
+    clear_log_search_cache()
+    yield
+    clear_log_search_cache()
 
 
 @pytest.fixture
 def logs(tmp_path: Path) -> tuple[Path, Path]:
-    chat = tmp_path / "chat_log.csv"
-    hero = tmp_path / "hero_log.csv"
-    _write_csv(
-        chat,
-        [
-            ["2026-01-01 10:00:00", "Chiaki", "hello team", "team"],
-            ["2026-01-01 10:00:05", "Chiaki123", "imposter line", "team"],
-            ["2026-01-01 10:00:10", "NotChiaki", "also imposter", "all"],
-            ["2026-01-01 10:01:00", "Bob", "GG WP", "all"],
-            ["2026-01-01 10:02:00", "Bob", "nice ult CHIAKI", "team"],
-            ["2026-01-01 10:03:00", "Ünicode", "grüße dich", "all"],
-            ["2026-01-01 10:04:00", "chiaki", "lowercase variant", "team"],
-            ["2026-01-01 10:05:00", "Alice", "good game", "all"],
-            ["2026-01-01 10:06:00", "Alice", "team push mid", "team"],
-            ["2026-01-01 10:07:00", "Eve", "go go", "team"],
-            ["2026-01-01 10:08:00", "Mallory", "late message", "all"],
+    """Seed a single DB and return ``(db, db)`` for compatibility with the
+    existing ``chat_log_path`` / ``hero_log_path`` argument pair."""
+    db = tmp_path / "chat_log.sqlite"
+    _seed_db(
+        db,
+        chat_rows=[
+            ("2026-01-01 10:00:00", "Chiaki", "hello team", "team"),
+            ("2026-01-01 10:00:05", "Chiaki123", "imposter line", "team"),
+            ("2026-01-01 10:00:10", "NotChiaki", "also imposter", "all"),
+            ("2026-01-01 10:01:00", "Bob", "GG WP", "all"),
+            ("2026-01-01 10:02:00", "Bob", "nice ult CHIAKI", "team"),
+            ("2026-01-01 10:03:00", "Ünicode", "grüße dich", "all"),
+            ("2026-01-01 10:04:00", "chiaki", "lowercase variant", "team"),
+            ("2026-01-01 10:05:00", "Alice", "good game", "all"),
+            ("2026-01-01 10:06:00", "Alice", "team push mid", "team"),
+            ("2026-01-01 10:07:00", "Eve", "go go", "team"),
+            ("2026-01-01 10:08:00", "Mallory", "late message", "all"),
+        ],
+        hero_rows=[
+            ("2026-01-01 09:59:00", "Chiaki", "Mercy"),
+            ("2026-01-01 10:01:30", "Chiaki", "Kiriko"),
+            ("2026-01-01 10:01:45", "Bob", "Reinhardt"),
+            ("2026-01-01 10:02:30", "Alice", "Chiaki-skin-hero"),
+            ("2026-01-01 10:09:00", "Mallory", "Lucio"),
         ],
     )
-    _write_csv(
-        hero,
-        [
-            ["2026-01-01 09:59:00", "Chiaki", "Mercy"],
-            ["2026-01-01 10:01:30", "Chiaki", "Kiriko"],
-            ["2026-01-01 10:01:45", "Bob", "Reinhardt"],
-            ["2026-01-01 10:02:30", "Alice", "Chiaki-skin-hero"],
-            ["2026-01-01 10:09:00", "Mallory", "Lucio"],
-        ],
-    )
-    return chat, hero
+    return db, db
 
 
 def _ts(rs: SearchResultSet) -> list[str]:
@@ -123,26 +176,9 @@ def test_search_limit_truncates_and_sets_flag(logs):
     assert rs.results[0].timestamp >= rs.results[-1].timestamp
 
 
-def test_search_malformed_rows_skipped(tmp_path):
-    chat = tmp_path / "chat_log.csv"
-    hero = tmp_path / "hero_log.csv"
-    with chat.open("w", newline="", encoding="utf-8") as fh:
-        w = csv.writer(fh)
-        w.writerow(["2026-01-01 10:00:00", "Alice", "hello", "team"])
-        w.writerow(["too", "few"])  # short row
-        w.writerow(["2026-01-01 10:00:01", "Bob", "bye", "garbage-channel"])
-        w.writerow(["2026-01-01 10:00:02", "Alice", "hi again", "all"])
-    hero.write_text("", encoding="utf-8")
-
-    rs = search_logs("a", chat_log_path=chat, hero_log_path=hero)
-    # Alice's two rows survive; Bob with garbage-channel is skipped; short row skipped.
-    assert len(rs.results) == 2
-    assert {r.player for r in rs.results} == {"Alice"}
-
-
 def test_search_missing_files_return_empty(tmp_path):
-    chat = tmp_path / "nope_chat.csv"
-    hero = tmp_path / "nope_hero.csv"
+    chat = tmp_path / "nope_chat.sqlite"
+    hero = tmp_path / "nope_hero.sqlite"
     rs = search_logs("anything", chat_log_path=chat, hero_log_path=hero)
     assert rs == SearchResultSet(results=[], truncated=False)
 
@@ -196,8 +232,8 @@ def test_history_limit_honored(logs):
 def test_history_missing_files_return_empty(tmp_path):
     rs = history_for_player(
         "Alice",
-        chat_log_path=tmp_path / "missing_chat.csv",
-        hero_log_path=tmp_path / "missing_hero.csv",
+        chat_log_path=tmp_path / "missing_chat.sqlite",
+        hero_log_path=tmp_path / "missing_hero.sqlite",
     )
     assert rs == SearchResultSet(results=[], truncated=False)
 
@@ -254,3 +290,109 @@ def test_result_row_fields_populated(logs):
     assert chat_row.timestamp.startswith("2026-01-01")
     hero_row = by_source["hero"]
     assert hero_row.text == "Reinhardt"
+
+
+# ── New SQLite-specific tests ───────────────────────────────────────────────
+
+
+def test_search_like_metacharacters_treated_literally(tmp_path):
+    """A user query containing ``%`` must NOT be expanded as a wildcard."""
+    db = tmp_path / "chat.sqlite"
+    _seed_db(
+        db,
+        chat_rows=[
+            ("2026-01-01 10:00:00", "100%er", "first", "team"),
+            ("2026-01-01 10:01:00", "abc", "second", "team"),
+            ("2026-01-01 10:02:00", "xyz", "third", "team"),
+        ],
+        hero_rows=[],
+    )
+    rs = search_logs("100%", chat_log_path=db, hero_log_path=db)
+    # Without escape: ``LIKE '%100%%'`` would match every row that starts
+    # with "100" (and via accident, every row at all if the engine doesn't
+    # interpret the trailing %). With the escape, only "100%er" matches.
+    assert {r.player for r in rs.results} == {"100%er"}
+
+
+def test_search_underscore_treated_literally(tmp_path):
+    """LIKE ``_`` is the single-char wildcard; user input must be escaped."""
+    db = tmp_path / "chat.sqlite"
+    _seed_db(
+        db,
+        chat_rows=[
+            ("2026-01-01 10:00:00", "a_b", "ok", "team"),
+            ("2026-01-01 10:01:00", "axb", "no", "team"),  # would match unescaped _
+            ("2026-01-01 10:02:00", "zzz", "no", "team"),
+        ],
+        hero_rows=[],
+    )
+    rs = search_logs("a_b", chat_log_path=db, hero_log_path=db)
+    assert {r.player for r in rs.results} == {"a_b"}
+
+
+def test_writer_and_reader_use_same_db(tmp_path):
+    """End-to-end round-trip: ``MessageLogger.log`` then ``search_logs``."""
+    from ow_chat_logger.logger import MessageLogger
+
+    db = tmp_path / "chat.sqlite"
+    chat_logger = MessageLogger(str(db))
+    hero_logger = MessageLogger(str(db), print_mode="hero", include_chat_type=False)
+
+    chat_logger.log("2026-01-01 10:00:00", "pixelwolf", "grouping mid", "team")
+    chat_logger.log("2026-01-01 10:00:05", "rayner", "on it", "team")
+    hero_logger.log("2026-01-01 10:00:10", "pixelwolf", "Ana")
+    chat_logger.close()
+    hero_logger.close()
+
+    rs = search_logs("pixelwolf", chat_log_path=db, hero_log_path=db)
+    sources = {r.source for r in rs.results}
+    assert sources == {"team", "hero"}
+    assert {r.player for r in rs.results} == {"pixelwolf"}
+
+
+def test_clear_log_search_cache_releases_connections(tmp_path):
+    """After clearing the cache the next query opens a fresh connection."""
+    db = tmp_path / "chat.sqlite"
+    _seed_db(
+        db,
+        chat_rows=[("2026-01-01 10:00:00", "alice", "hi", "team")],
+        hero_rows=[],
+    )
+    rs1 = search_logs("alice", chat_log_path=db, hero_log_path=db)
+    assert len(rs1.results) == 1
+
+    clear_log_search_cache()
+    # The DB file still exists; the cache was just dropped. A fresh query
+    # must reopen and return the same data.
+    rs2 = search_logs("alice", chat_log_path=db, hero_log_path=db)
+    assert len(rs2.results) == 1
+
+
+def test_search_invalid_match_field_raises(tmp_path):
+    db = tmp_path / "chat.sqlite"
+    _seed_db(db, chat_rows=[], hero_rows=[])
+    with pytest.raises(ValueError):
+        search_logs("anything", chat_log_path=db, hero_log_path=db, match_field="bogus")  # type: ignore[arg-type]
+
+
+def test_search_invalid_channel_filter_raises(tmp_path):
+    db = tmp_path / "chat.sqlite"
+    _seed_db(db, chat_rows=[], hero_rows=[])
+    with pytest.raises(ValueError):
+        search_logs("anything", chat_log_path=db, hero_log_path=db, channel_filter="bogus")  # type: ignore[arg-type]
+
+
+def test_db_check_constraint_rejects_bad_source(tmp_path):
+    """Direct INSERT with a bad source is rejected by the schema CHECK."""
+    db = tmp_path / "chat.sqlite"
+    conn = open_db(db)
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO messages "
+                "(timestamp, player, player_lc, text, text_lc, source) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("2026-01-01 10:00:00", "alice", "alice", "hi", "hi", "garbage"),
+            )
+    finally:
+        conn.close()

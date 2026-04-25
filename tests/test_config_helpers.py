@@ -59,7 +59,7 @@ def test_resolved_ocr_profile_pipeline_and_settings_are_read_only():
         profile.settings["confidence_threshold"] = 0.9
 
 
-def test_get_app_paths_uses_packaged_output_dir_on_frozen_windows(monkeypatch):
+def test_get_app_paths_uses_appdata_for_chat_db_on_frozen_windows(monkeypatch):
     import ow_chat_logger.config as cfg_module
 
     appdata = Path(__file__).resolve().parent / "_tmp_appdata_packaged"
@@ -76,12 +76,17 @@ def test_get_app_paths_uses_packaged_output_dir_on_frozen_windows(monkeypatch):
     cfg_module.reset_config()
     paths = cfg_module.get_app_paths()
 
-    assert paths.log_dir == exe_dir / "OW Chat Logger Data"
-    assert paths.chat_log == paths.log_dir / "chat_log.csv"
-    assert paths.hero_log == paths.log_dir / "hero_log.csv"
-    assert paths.snap_dir == paths.appdata_dir / "dev" / "debug_snaps"
-    assert paths.crash_log == appdata / "ow-chat-logger" / "crash.log"
-    assert paths.config_path == appdata / "ow-chat-logger" / "config.json"
+    appdata_root = appdata / "ow-chat-logger"
+    # Chat DB anchors to appdata regardless of packaging — one canonical
+    # store per install, sitting next to config.json.
+    assert paths.chat_db == appdata_root / "chat_log.sqlite"
+    assert paths.log_dir == appdata_root
+    # Deprecated CSV aliases still resolvable; both alias to the SQLite file.
+    assert paths.chat_log == paths.chat_db
+    assert paths.hero_log == paths.chat_db
+    assert paths.snap_dir == appdata_root / "dev" / "debug_snaps"
+    assert paths.crash_log == appdata_root / "crash.log"
+    assert paths.config_path == appdata_root / "config.json"
     assert not paths.snap_dir.exists(), "snap_dir should be created lazily on first write"
 
 
@@ -102,12 +107,16 @@ def test_get_app_paths_keeps_non_packaged_default_behavior(monkeypatch):
     cfg_module.reset_config()
     paths = cfg_module.get_app_paths()
 
-    assert paths.log_dir == cwd / "OW Chat Logger Data"
-    assert paths.crash_log == appdata / "ow-chat-logger" / "crash.log"
-    assert paths.config_path == appdata / "ow-chat-logger" / "config.json"
+    appdata_root = appdata / "ow-chat-logger"
+    # Non-packaged dev runs land in appdata too — no per-cwd "OW Chat
+    # Logger Data" folder anymore. Avoids splitting state across CWDs.
+    assert paths.log_dir == appdata_root
+    assert paths.chat_db == appdata_root / "chat_log.sqlite"
+    assert paths.crash_log == appdata_root / "crash.log"
+    assert paths.config_path == appdata_root / "config.json"
 
 
-def test_config_log_dir_is_ignored_for_packaged_default(monkeypatch):
+def test_config_log_dir_is_ignored_for_default(monkeypatch):
     import ow_chat_logger.config as cfg_module
 
     appdata = Path(__file__).resolve().parent / "_tmp_appdata_ignore_config_log_dir"
@@ -130,11 +139,15 @@ def test_config_log_dir_is_ignored_for_packaged_default(monkeypatch):
     cfg_module.reset_config()
     paths = cfg_module.get_app_paths()
 
-    assert paths.log_dir == exe_dir / "OW Chat Logger Data"
-    assert paths.crash_log == appdata / "ow-chat-logger" / "crash.log"
+    appdata_root = appdata / "ow-chat-logger"
+    assert paths.log_dir == appdata_root
+    assert paths.chat_db == appdata_root / "chat_log.sqlite"
+    assert paths.crash_log == appdata_root / "crash.log"
 
 
-def test_environment_log_dir_overrides_packaged_default(monkeypatch):
+def test_environment_log_dir_overrides_log_dir_only(monkeypatch):
+    """``OW_CHAT_LOG_DIR`` redirects ad-hoc scratch output (metrics CSVs,
+    "Open Logs" target). The canonical chat DB stays in appdata."""
     import ow_chat_logger.config as cfg_module
 
     appdata = Path(__file__).resolve().parent / "_tmp_appdata_env_override"
@@ -152,9 +165,10 @@ def test_environment_log_dir_overrides_packaged_default(monkeypatch):
     cfg_module.reset_config()
     paths = cfg_module.get_app_paths()
 
+    appdata_root = appdata / "ow-chat-logger"
     assert paths.log_dir == env_log_dir
-    assert paths.chat_log == env_log_dir / "chat_log.csv"
-    assert paths.crash_log == appdata / "ow-chat-logger" / "crash.log"
+    assert paths.chat_db == appdata_root / "chat_log.sqlite"
+    assert paths.crash_log == appdata_root / "crash.log"
 
 
 def test_packaged_runtime_filters_non_windows_ocr_profiles(monkeypatch):

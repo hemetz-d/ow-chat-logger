@@ -74,7 +74,6 @@ ENGINE_SETTING_KEYS = {
 DEFAULT_OCR_PROFILE = "windows_default"
 EASYOCR_MASTER_BASELINE_PROFILE = "easyocr_master_baseline"
 TESSERACT_DEFAULT_PROFILE = "tesseract_default"
-PACKAGED_OUTPUT_DIR_NAME = "OW Chat Logger Data"
 
 
 def _builtin_ocr_profiles() -> dict[str, dict[str, Any]]:
@@ -266,6 +265,10 @@ class AppPaths:
     log_dir: Path
     appdata_dir: Path
     config_path: Path
+    chat_db: Path  # canonical SQLite store for chat + hero rows
+    # ``chat_log`` and ``hero_log`` retained as aliases for one release so
+    # existing callers (backend_bridge, live_runtime) keep working without a
+    # signature churn. Both now resolve to the same SQLite file.
     chat_log: Path
     hero_log: Path
     crash_log: Path
@@ -300,14 +303,14 @@ def is_packaged_windows_run() -> bool:
     return sys.platform == "win32" and bool(getattr(sys, "frozen", False))
 
 
-def default_runtime_base_dir() -> Path:
-    if is_packaged_windows_run():
-        return Path(sys.executable).resolve().parent
-    return Path.cwd().resolve()
-
-
 def default_runtime_log_dir() -> Path:
-    return default_runtime_base_dir() / PACKAGED_OUTPUT_DIR_NAME
+    # The chat DB and ad-hoc CSV scratch (e.g. performance metrics) all live
+    # in the user's appdata folder now. The previous "OW Chat Logger Data"
+    # subfolder beside the exe / cwd was a CSV-era artefact: it existed so
+    # the user could grep their chat history with file-manager tools.
+    # SQLite files don't grep, so there's no UX win to keeping a separate
+    # user-friendly folder; it just splits state across two places.
+    return default_appdata_dir()
 
 
 def get_user_config_path() -> Path:
@@ -441,12 +444,19 @@ def get_app_paths(*, ensure_exists: bool = True) -> AppPaths:
     config = load_config()
     log_dir = resolve_log_dir(config["log_dir"])
     appdata_dir = default_appdata_dir()
+    # The chat DB always lives in the appdata folder, regardless of where
+    # the user has pointed ``log_dir`` (env / config). This is a
+    # canonical-store rule: there is exactly one ``chat_log.sqlite`` per
+    # install, and it sits next to ``config.json``.
+    chat_db = appdata_dir / "chat_log.sqlite"
     paths = AppPaths(
         log_dir=log_dir,
         appdata_dir=appdata_dir,
         config_path=get_user_config_path(),
-        chat_log=log_dir / "chat_log.csv",
-        hero_log=log_dir / "hero_log.csv",
+        chat_db=chat_db,
+        # Deprecated CSV aliases retained one release; both alias the DB.
+        chat_log=chat_db,
+        hero_log=chat_db,
         crash_log=appdata_dir / "crash.log",
         snap_dir=appdata_dir / "dev" / "debug_snaps",
     )
