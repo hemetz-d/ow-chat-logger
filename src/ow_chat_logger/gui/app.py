@@ -178,40 +178,35 @@ class OWChatLoggerApp(ctk.CTk):
         right = ctk.CTkFrame(toolbar, fg_color="transparent")
         right.grid(row=0, column=2, sticky="e", padx=(0, 18), pady=10)
 
+        # Stop + Start visuals are driven by ``_set_button_visual`` so the
+        # active (clickable) button is always the prominent one — solid
+        # accent Start when idle, solid red Stop when running. The inactive
+        # button collapses to a muted outline, making the run state
+        # unambiguous at a glance. Construction-time props are just the
+        # invariants (size, corner radius, command).
         self._stop_btn = ctk.CTkButton(
             right,
             text="Stop",
-            image=I.icon("stop", 10, color=T.DANGER),
             compound="left",
-            width=78,
+            width=86,
             height=32,
             corner_radius=7,
-            font=T.font_small(),
-            fg_color="transparent",
-            border_width=1,
-            border_color=T.BORDER_HAIRLINE,
-            hover_color=T.BG_ELEV,
-            text_color=T.TEXT_SECONDARY,
             command=self._on_stop,
-            state="disabled",
         )
         self._stop_btn.pack(side="left", padx=(0, 8))
 
         self._start_btn = ctk.CTkButton(
             right,
             text="Start",
-            image=I.icon("play", 10, color=T.ACCENT_FG),
             compound="left",
             width=86,
             height=32,
             corner_radius=7,
-            font=ctk.CTkFont(family=T.ui_family(), size=12, weight="bold"),
-            fg_color=T.ACCENT,
-            hover_color=T.ACCENT_HOVER,
-            text_color=T.ACCENT_FG,
             command=self._on_start,
         )
         self._start_btn.pack(side="left")
+
+        self._set_button_visual("idle")
 
     def _build_feed(self) -> None:
         from ow_chat_logger.config import get_app_paths
@@ -578,13 +573,10 @@ class OWChatLoggerApp(ctk.CTk):
         from ow_chat_logger.config import reset_config
 
         reset_config()
-        self._start_btn.configure(state="disabled")
-        self._stop_btn.configure(state="disabled")
         self._set_status("starting", "Starting…")
         self._bridge.start()
 
     def _on_stop(self) -> None:
-        self._stop_btn.configure(state="disabled")
         self._set_status("stopping", "Stopping…")
         self._bridge.stop()
 
@@ -637,24 +629,78 @@ class OWChatLoggerApp(ctk.CTk):
     def _apply_status_event(self, event: StatusEvent) -> None:
         if event.kind == "started":
             self._set_status("running", "Running")
-            self._start_btn.configure(state="disabled")
-            self._stop_btn.configure(state="normal")
             self._session_start = time.monotonic()
             self._message_count = 0
             self._show_stats_chip()
             self._start_stats_timer()
         elif event.kind == "stopped":
             self._set_status("idle", "Idle")
-            self._start_btn.configure(state="normal")
-            self._stop_btn.configure(state="disabled")
             self._stop_stats_timer()
             self._hide_stats_chip()
         elif event.kind == "error":
             self._set_status("error", "Error")
-            self._start_btn.configure(state="normal")
-            self._stop_btn.configure(state="disabled")
             self._stop_stats_timer()
             self._hide_stats_chip()
+
+    def _set_button_visual(self, kind: str) -> None:
+        """Style Stop/Start so the active action visually dominates.
+
+        Idle/error → Start is the accent-solid primary, Stop is a muted
+        outline. Running → Stop becomes a solid danger button (the obvious
+        "press me to halt"), Start fades to the muted outline. Transitional
+        states (starting/stopping) keep the destination visual but disable
+        both buttons so a double-click can't fire two requests.
+        """
+        running = kind in ("running", "stopping")
+        transitioning = kind in ("starting", "stopping")
+
+        primary_font = ctk.CTkFont(family=T.ui_family(), size=12, weight="bold")
+        muted_font = T.font_small()
+
+        if running:
+            self._stop_btn.configure(
+                fg_color=T.DANGER,
+                hover_color=T.DANGER_HOVER,
+                text_color="#ffffff",
+                text_color_disabled="#ffffff",
+                border_width=0,
+                font=primary_font,
+                image=I.icon("stop", 10, color="#ffffff"),
+                state="disabled" if transitioning else "normal",
+            )
+            self._start_btn.configure(
+                fg_color="transparent",
+                hover_color=T.BG_ELEV,
+                text_color=T.TEXT_DIM,
+                text_color_disabled=T.TEXT_DIM,
+                border_width=1,
+                border_color=T.BORDER_HAIRLINE,
+                font=muted_font,
+                image=I.icon("play", 10, color=T.TEXT_DIM),
+                state="disabled",
+            )
+        else:
+            self._start_btn.configure(
+                fg_color=T.ACCENT,
+                hover_color=T.ACCENT_HOVER,
+                text_color=T.ACCENT_FG,
+                text_color_disabled=T.ACCENT_FG,
+                border_width=0,
+                font=primary_font,
+                image=I.icon("play", 10, color=T.ACCENT_FG),
+                state="disabled" if transitioning else "normal",
+            )
+            self._stop_btn.configure(
+                fg_color="transparent",
+                hover_color=T.BG_ELEV,
+                text_color=T.TEXT_DIM,
+                text_color_disabled=T.TEXT_DIM,
+                border_width=1,
+                border_color=T.BORDER_HAIRLINE,
+                font=muted_font,
+                image=I.icon("stop", 10, color=T.TEXT_DIM),
+                state="disabled",
+            )
 
     def _set_status(self, kind: str, text: str) -> None:
         # Toolbar "Recording" chip uses the accent color when running so the
@@ -707,6 +753,10 @@ class OWChatLoggerApp(ctk.CTk):
             self._start_pulse()
         else:
             self._stop_pulse()
+
+        # Drive the Stop/Start visual from the same status kind so the
+        # buttons can never lag the chip/status bar.
+        self._set_button_visual(kind)
 
     # ── Pulse animation ───────────────────────────────────────────────────────
 
