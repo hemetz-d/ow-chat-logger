@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import tkinter as tk
 import tkinter.colorchooser as colorchooser
+import tkinter.filedialog as fd
 import tkinter.messagebox as mb
+from datetime import datetime
+from pathlib import Path
 from typing import Callable
 
 import customtkinter as ctk
@@ -605,6 +608,20 @@ class SettingsPanel(ctk.CTkFrame):
             width=120,
             font=T.font_body(),
         ).pack(side="right")
+        ctk.CTkButton(
+            inner,
+            text="Export history…",
+            command=self._open_export_modal,
+            fg_color="transparent",
+            border_width=1,
+            border_color=T.BORDER_HAIRLINE,
+            hover_color=T.BG_ELEV,
+            text_color=T.TEXT_PRIMARY,
+            corner_radius=T.R_PILL,
+            height=34,
+            width=140,
+            font=T.font_body(),
+        ).pack(side="right", padx=(0, 8))
 
     # ── Data operations ───────────────────────────────────────────────────────
 
@@ -755,13 +772,15 @@ class SettingsPanel(ctk.CTkFrame):
 
     # ── Save-feedback toast ──────────────────────────────────────────────────
 
-    def _show_saved_toast(self) -> None:
-        """Brief in-panel confirmation that settings were saved.
+    def _show_saved_toast(self, message: str = "Settings saved") -> None:
+        """Brief in-panel confirmation pill — defaults to a save acknowledgement.
 
         Replaces the native ``mb.showinfo`` dialog with an accent-tinted pill
         that pops in just above the action footer and auto-dismisses after
-        ~2.5 seconds. Repeated saves cancel any pending hide and refresh the
-        timer so the toast feels stable rather than racing itself.
+        ~2.5 seconds. Repeated triggers cancel any pending hide and refresh
+        the timer so the toast feels stable rather than racing itself. The
+        ``message`` argument lets non-save flows (e.g. export) reuse the
+        same widget without copy-pasting the layout code.
         """
         if self._toast_after_id is not None:
             try:
@@ -791,7 +810,7 @@ class SettingsPanel(ctk.CTkFrame):
         ).pack(side="left", padx=(14, 8), pady=8)
         ctk.CTkLabel(
             toast,
-            text="Settings saved",
+            text=message,
             text_color=T.ACCENT,
             font=ctk.CTkFont(family=T.ui_family(), size=12, weight="bold"),
         ).pack(side="left", padx=(0, 16), pady=8)
@@ -818,3 +837,289 @@ class SettingsPanel(ctk.CTkFrame):
             except Exception:
                 pass
             self._toast = None
+
+    # ── Export history modal ─────────────────────────────────────────────────
+
+    def _open_export_modal(self) -> None:
+        """Open the small "Export history" modal anchored to this panel.
+
+        The modal collects format + channel + optional date range, then
+        defers to a native save dialog for the destination path. The actual
+        export work happens in :mod:`ow_chat_logger.log_export` so the GUI
+        layer stays focused on UI plumbing.
+        """
+        ExportModal(self)
+
+    def _run_export(
+        self,
+        *,
+        fmt: str,
+        channel_filter: str | None,
+        since: str | None,
+        until: str | None,
+        out_path: Path,
+    ) -> None:
+        """Dispatch to the export core and surface the result via toast."""
+        from ow_chat_logger.log_export import export_to_csv, export_to_txt
+
+        try:
+            if fmt == "csv":
+                count = export_to_csv(
+                    out_path,
+                    channel_filter=channel_filter,  # type: ignore[arg-type]
+                    since=since,
+                    until=until,
+                )
+            else:
+                count = export_to_txt(
+                    out_path,
+                    channel_filter=channel_filter,  # type: ignore[arg-type]
+                    since=since,
+                    until=until,
+                )
+        except FileNotFoundError as exc:
+            mb.showerror("Export failed", str(exc), parent=self.winfo_toplevel())
+            return
+        except Exception as exc:  # noqa: BLE001 — surface anything to the user
+            mb.showerror(
+                "Export failed",
+                f"Could not export history: {exc}",
+                parent=self.winfo_toplevel(),
+            )
+            return
+
+        self._show_saved_toast(f"Exported {count} messages to {out_path.name}")
+
+
+# ── Export modal ────────────────────────────────────────────────────────────
+
+
+_EXPORT_CHANNELS = (
+    ("All channels", None),
+    ("Team", "team"),
+    ("All chat", "all"),
+    ("Hero", "hero"),
+)
+
+
+class ExportModal(ctk.CTkToplevel):
+    """Tiny export-options dialog parented to the settings panel.
+
+    Kept as its own class so the settings panel doesn't grow another long
+    ``_build_*`` method, and so future call sites (e.g. a dedicated History
+    section) can reuse it without copy-pasting layout code.
+    """
+
+    def __init__(self, parent: SettingsPanel) -> None:
+        super().__init__(parent)
+        self._panel = parent
+        self.title("Export history")
+        self.resizable(False, False)
+        # ``transient`` + ``grab_set`` make this a true modal: no clicks land
+        # on the main window until it is dismissed. ``after_idle`` defers
+        # the grab past the window-mapping race that bites ``CTkToplevel``
+        # — calling ``grab_set`` synchronously sometimes raises ``TclError``
+        # because the window is not yet viewable.
+        self.transient(parent.winfo_toplevel())
+        self.after_idle(self._safe_grab)
+
+        T.apply_chrome(self)
+        self.configure(fg_color=T.BG_ROOT)
+
+        self._fmt_var = tk.StringVar(value="txt")
+        self._channel_var = tk.StringVar(value=_EXPORT_CHANNELS[0][0])
+        self._since_var = tk.StringVar()
+        self._until_var = tk.StringVar()
+
+        self._build()
+        self.update_idletasks()
+        self._center_over_parent(parent)
+
+    def _safe_grab(self) -> None:
+        try:
+            self.grab_set()
+        except tk.TclError:
+            pass
+
+    def _build(self) -> None:
+        body = ctk.CTkFrame(self, fg_color=T.BG_ROOT, corner_radius=0)
+        body.pack(fill="both", expand=True, padx=18, pady=(16, 12))
+
+        # Format
+        ctk.CTkLabel(
+            body, text="Format", text_color=T.TEXT_SECONDARY, font=T.font_caption(), anchor="w"
+        ).pack(fill="x", pady=(0, 4))
+        ctk.CTkSegmentedButton(
+            body,
+            values=[".txt", ".csv"],
+            command=lambda v: self._fmt_var.set(v.lstrip(".")),
+            height=30,
+            corner_radius=T.R_BUTTON,
+            fg_color=T.BG_ELEV,
+            selected_color=T.ACCENT,
+            selected_hover_color=T.ACCENT_HOVER,
+            unselected_color=T.BG_ELEV,
+            unselected_hover_color=T.BORDER_HOVER,
+            text_color=T.TEXT_PRIMARY,
+            font=T.font_small(),
+        ).pack(fill="x", pady=(0, 12))
+
+        # Channel
+        ctk.CTkLabel(
+            body, text="Channel", text_color=T.TEXT_SECONDARY, font=T.font_caption(), anchor="w"
+        ).pack(fill="x", pady=(0, 4))
+        ctk.CTkSegmentedButton(
+            body,
+            values=[label for label, _ in _EXPORT_CHANNELS],
+            variable=self._channel_var,
+            height=30,
+            corner_radius=T.R_BUTTON,
+            fg_color=T.BG_ELEV,
+            selected_color=T.ACCENT,
+            selected_hover_color=T.ACCENT_HOVER,
+            unselected_color=T.BG_ELEV,
+            unselected_hover_color=T.BORDER_HOVER,
+            text_color=T.TEXT_PRIMARY,
+            font=T.font_small(),
+        ).pack(fill="x", pady=(0, 12))
+
+        # Date range
+        ctk.CTkLabel(
+            body,
+            text="Date range (YYYY-MM-DD, optional)",
+            text_color=T.TEXT_SECONDARY,
+            font=T.font_caption(),
+            anchor="w",
+        ).pack(fill="x", pady=(0, 4))
+        date_row = ctk.CTkFrame(body, fg_color="transparent")
+        date_row.pack(fill="x", pady=(0, 4))
+        ctk.CTkLabel(
+            date_row, text="From", text_color=T.TEXT_MUTED, font=T.font_caption(), width=40
+        ).pack(side="left")
+        self._mk_entry(date_row, self._since_var).pack(side="left", padx=(4, 12))
+        ctk.CTkLabel(
+            date_row, text="To", text_color=T.TEXT_MUTED, font=T.font_caption(), width=24
+        ).pack(side="left")
+        self._mk_entry(date_row, self._until_var).pack(side="left", padx=(4, 0))
+
+        # Buttons
+        buttons = ctk.CTkFrame(self, fg_color=T.BG_CHROME, corner_radius=0)
+        buttons.pack(side="bottom", fill="x")
+        inner = ctk.CTkFrame(buttons, fg_color="transparent")
+        inner.pack(fill="x", padx=18, pady=12)
+        ctk.CTkButton(
+            inner,
+            text="Cancel",
+            command=self.destroy,
+            fg_color="transparent",
+            border_width=1,
+            border_color=T.BORDER_HAIRLINE,
+            hover_color=T.BG_ELEV,
+            text_color=T.TEXT_PRIMARY,
+            corner_radius=T.R_PILL,
+            height=32,
+            width=92,
+            font=T.font_body(),
+        ).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(
+            inner,
+            text="Export",
+            command=self._on_export,
+            fg_color=T.ACCENT,
+            hover_color=T.ACCENT_HOVER,
+            text_color=T.ACCENT_FG,
+            corner_radius=T.R_PILL,
+            height=32,
+            width=92,
+            font=T.font_button(),
+        ).pack(side="right")
+
+    def _mk_entry(self, parent: tk.Widget, var: tk.StringVar) -> ctk.CTkEntry:
+        return ctk.CTkEntry(
+            parent,
+            textvariable=var,
+            width=110,
+            height=28,
+            corner_radius=T.R_INPUT,
+            border_width=1,
+            border_color=T.BORDER_HAIRLINE,
+            fg_color=T.BG_ELEV,
+            text_color=T.TEXT_PRIMARY,
+            font=T.font_small(),
+            placeholder_text="YYYY-MM-DD",
+        )
+
+    def _center_over_parent(self, parent: tk.Widget) -> None:
+        try:
+            top = parent.winfo_toplevel()
+            top.update_idletasks()
+            px, py = top.winfo_rootx(), top.winfo_rooty()
+            pw, ph = top.winfo_width(), top.winfo_height()
+            mw, mh = self.winfo_width(), self.winfo_height()
+            self.geometry(f"+{px + (pw - mw) // 2}+{py + (ph - mh) // 3}")
+        except tk.TclError:
+            pass
+
+    def _on_export(self) -> None:
+        # Resolve channel label → log_export filter value.
+        label = self._channel_var.get()
+        channel_filter = next(
+            (val for lbl, val in _EXPORT_CHANNELS if lbl == label),
+            None,
+        )
+
+        # Date inputs are optional. Empty → no bound. A non-empty value must
+        # parse as a calendar date; we expand to start/end-of-day ISO strings
+        # so the lexical comparison in log_export covers the full day.
+        try:
+            since = self._date_to_since(self._since_var.get())
+            until = self._date_to_until(self._until_var.get())
+        except ValueError as exc:
+            mb.showerror("Invalid date", str(exc), parent=self)
+            return
+
+        fmt = self._fmt_var.get() or "txt"
+        default_name = f"chat_history_{datetime.now():%Y%m%d}.{fmt}"
+        filetypes = (
+            [("Text", "*.txt"), ("All files", "*.*")]
+            if fmt == "txt"
+            else [("CSV", "*.csv"), ("All files", "*.*")]
+        )
+        chosen = fd.asksaveasfilename(
+            parent=self,
+            title="Export history",
+            defaultextension=f".{fmt}",
+            initialfile=default_name,
+            filetypes=filetypes,
+        )
+        if not chosen:
+            return
+
+        # Hand control back to the panel so the success toast lands on the
+        # surface the user is already looking at — and so the modal can
+        # close cleanly before any blocking dialogs (errors) might appear.
+        self.destroy()
+        self._panel._run_export(
+            fmt=fmt,
+            channel_filter=channel_filter,
+            since=since,
+            until=until,
+            out_path=Path(chosen),
+        )
+
+    @staticmethod
+    def _date_to_since(raw: str) -> str | None:
+        raw = raw.strip()
+        if not raw:
+            return None
+        # Validate; raises ValueError with a usable message on bad input.
+        datetime.strptime(raw, "%Y-%m-%d")
+        return f"{raw} 00:00:00"
+
+    @staticmethod
+    def _date_to_until(raw: str) -> str | None:
+        raw = raw.strip()
+        if not raw:
+            return None
+        datetime.strptime(raw, "%Y-%m-%d")
+        return f"{raw} 23:59:59"
