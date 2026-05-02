@@ -107,9 +107,7 @@ def export_to_csv(
             writer = csv.writer(fh)
             writer.writerow(_CSV_HEADER)
             for row in conn.execute(sql, params):
-                writer.writerow(
-                    (row["timestamp"], row["player"], row["text"], row["source"])
-                )
+                writer.writerow((row["timestamp"], row["player"], row["text"], row["source"]))
                 written += 1
     finally:
         conn.close()
