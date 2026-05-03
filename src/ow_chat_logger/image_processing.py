@@ -370,10 +370,17 @@ def compute_prefix_evidence_for_lines(
                     (largest_area / probe_nonzero) if probe_nonzero else 0.0
                 )
 
+        # With only one anchor, body_start_range is derived from a single sample and
+        # cannot account for player-name length variance (a long anchor like [Power]:
+        # produces a range that excludes a short missing prefix like [A7X]:). Trust
+        # the probe density gate alone in that case — the stricter min_density floor
+        # paired with anchor_count==1 already compensates.
+        body_start_gate = within_body_start_range or layout["anchor_count"] == 1
+
         has_missing_prefix_evidence = (
             classification["category"] == "continuation"
             and bool(layout["has_learned_layout"])
-            and within_body_start_range
+            and body_start_gate
             and within_line_height_range
             and probe_nonzero >= min_nonzero
             and min_density <= probe_density <= max_density

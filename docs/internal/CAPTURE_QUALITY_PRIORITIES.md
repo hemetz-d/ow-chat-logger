@@ -15,7 +15,7 @@ Risk scale: **LOW** (well-bounded, easy to revert) · **MED** (could regress unr
 | # | Error class | Effort | Risk | Fixtures fixed | Existing task |
 |---|---|---|---|---|---|
 | **Tier 1 — Quick wins** ||||||
-| 1 | Anchor-count floor: allow heuristic with anchor=1 + stricter probe | XS | LOW | ex_23, ex_24 | T-51 (sub-cause) |
+| 1 | ~~Anchor-count floor + body_start_range relaxation for single-anchor channels~~ ✅ **DONE 2026-05-03** | XS | LOW | ex_05, _13, _23, _24, _27 (boundary now splits; remaining diffs are #3 / #10 / #12) | T-51 (sub-cause) |
 | 2 | System patterns: `^You endorsed `, `^Music selected is ` | XS | LOW | (preventive) | T-50 |
 | **Tier 2 — Small focused fixes** ||||||
 | 3 | OCR character corrections: `ÅA`→`^^`, end-of-body `!`→`l`/`I` | S | LOW | ex_23, _24, _25, _27, _28 (drift parts) | T-48 |
@@ -35,11 +35,18 @@ Risk scale: **LOW** (well-bounded, easy to revert) · **MED** (could regress unr
 | 14 | OCR non-determinism on boundary detection | XL | — | ex_05, ex_13, ex_17, ex_27 (run-to-run jitter) | none |
 | 15 | Body case drift (lowercase → uppercase on first char) | XL | — | ex_04, ex_05 (body parts) | T-17 (folded) |
 
-**Cumulative projection:**
-- After Tier 1: **2 fewer failing tests** (ex_23, ex_24).
-- After Tier 1 + Tier 2: **3-5 fewer failing tests** depending on how cleanly #3 / #4 / #6 land.
-- After Tier 1 + 2 + 3: **8-10 fewer failing tests** (ex_05, _13, _14, _22, _23, _24 fully or mostly resolved).
-- After Tier 4: **most player-name and mask-saturation failures resolved** — likely down to 2-4 remaining failures in Tier 5 territory.
+**Cumulative projection (post-#1, 2026-05-03):**
+- ~~After Tier 1: 2 fewer failing tests (ex_23, ex_24).~~ Original projection was wrong: #1 affects **5 fixtures** (ex_05, _13, _23, _24, _27), not 2. Boundary detection now stable on all 5. None of those 5 currently *pass* the test (they still fail on `[unknown]` speaker recovery + body OCR drift) but the merge regime is gone, replaced by clean splits — the test failure surface is now exactly what #3 + #10 + #12 will fix.
+- After Tier 1 + Tier 2 (#3): expect **2 fewer failing tests** (ex_23, ex_24 — `[unknown]: epicl` becomes `[unknown]: epic!` and the test still fails because of `[unknown]` recovery; needs #10 to fully pass).
+- After Tier 1 + 2 + 3 (#10 lands): expect **5 fewer failing tests** (ex_05, _13, _23, _24, _27 fully resolved on the recovery path; ex_27 still fails on `MimiChan→MimiOhan` via #12).
+- After Tier 4: most player-name and mask-saturation failures resolved — likely down to 2-4 remaining failures in Tier 5 territory.
+
+**#1 implementation summary (commit pending):**
+- Lowered `missing_prefix_min_anchor_lines` from 2 → 1 (4 config copies).
+- Raised `missing_prefix_min_span_density` from 0.12 → 0.20 to compensate for the less-reliable single-anchor layout.
+- Added single-anchor bypass for `within_body_start_range` in `image_processing.py:373-381` — with one anchor, the body-start window is derived from a single sample and excludes shorter-prefix continuations (e.g. `[A7X]:` body falls left of a `[Power]:`-derived range). The strict probe density gate is sufficient evidence on its own.
+- Added 3 unit tests in `test_image_processing.py` (positive/negative for density, plus the body_start bypass).
+- **Discovered + fixed a silent test-framework bug:** `tests/test_regression_screenshots.py` was calling `extract_chat_lines(...)` and `collect_screenshot_messages(raw_lines)` — passing only raw lines and dropping prefix evidence on the floor. The missing-prefix heuristic had been **silently disabled in the regression suite the entire time**. Now uses `extract_chat_debug_data` and threads `raw_line_ys`, `raw_line_prefix_evidence`, `raw_continuation_y_gaps` through, matching how live runtime calls it.
 
 ---
 

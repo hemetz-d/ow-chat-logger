@@ -227,6 +227,202 @@ def test_compute_prefix_evidence_for_lines_positive_case():
     assert evidence[-1]["probe_density"] > 0.2
 
 
+def test_compute_prefix_evidence_for_lines_single_anchor_recovers_with_strict_density():
+    """With min_anchor_lines=1 and a stricter min_density, a single-anchor channel
+    can still detect a missing-prefix continuation. Mirrors the ex_23/ex_24 shape:
+    only one parseable prefix in the channel (`[Power]:`), and a bare body line
+    (`epic!`) below it that should split into [unknown]: epic! rather than merge.
+    """
+    mask = np.zeros((120, 200), dtype=np.uint8)
+    # anchor [Power]: row at y=4..36 — three vertical strips (high density)
+    mask[4:36, 10:16] = 255
+    mask[4:36, 18:24] = 255
+    mask[4:36, 26:32] = 255
+    # missing-prefix probe row at y=44..76 — three strips of similar density
+    mask[44:76, 12:18] = 255
+    mask[44:76, 20:26] = 255
+    mask[44:76, 28:34] = 255
+
+    layout, evidence = compute_prefix_evidence_for_lines(
+        mask,
+        [
+            {
+                "text": "[Power]: msg",
+                "center_y": 20.0,
+                "top_y": 4.0,
+                "bottom_y": 36.0,
+                "line_height": 32.0,
+                "first_box_x": 10.0,
+                "first_box_right_x": 50.0,
+                "segments": [
+                    {"text": "[Power]:", "x1": 10.0, "x2": 50.0, "y1": 4.0, "y2": 36.0},
+                    {"text": "msg", "x1": 80.0, "x2": 110.0, "y1": 8.0, "y2": 34.0},
+                ],
+            },
+            {
+                "text": "epicl",
+                "center_y": 60.0,
+                "top_y": 44.0,
+                "bottom_y": 76.0,
+                "line_height": 32.0,
+                "first_box_x": 80.0,
+                "first_box_right_x": 110.0,
+                "segments": [
+                    {"text": "epicl", "x1": 80.0, "x2": 110.0, "y1": 44.0, "y2": 76.0},
+                ],
+            },
+        ],
+        median_line_h=32.0,
+        config={
+            "missing_prefix_min_anchor_lines": 1,
+            "missing_prefix_body_start_tolerance": 4.0,
+            "missing_prefix_span_right_padding": 4,
+            "missing_prefix_vertical_padding": 4,
+            "missing_prefix_min_span_nonzero_pixels": 100,
+            "missing_prefix_min_span_density": 0.20,
+            "missing_prefix_max_span_density": 0.5,
+            "missing_prefix_max_largest_component_fraction": 0.8,
+            "missing_prefix_min_line_height_fraction": 0.8,
+            "missing_prefix_max_line_height_fraction": 1.2,
+        },
+    )
+
+    assert layout["has_learned_layout"] is True
+    assert layout["anchor_count"] == 1
+    assert evidence[1]["has_missing_prefix_evidence"] is True
+    assert evidence[1]["within_body_start_range"] is True
+
+
+def test_compute_prefix_evidence_for_lines_single_anchor_skips_body_start_range_check():
+    """With only one anchor, body_start_range is derived from a single sample and
+    cannot account for player-name length variance. A short missing prefix
+    (e.g. [A7X]:) produces a body that starts well to the LEFT of where a long
+    anchor (e.g. [Power]:) puts its body — within_body_start_range is False but
+    the heuristic should still fire because the probe density is strong.
+    Mirrors the actual ex_23/ex_24 root cause."""
+    mask = np.zeros((120, 200), dtype=np.uint8)
+    # anchor [Power]: at y=4..36 — body starts at x=80
+    mask[4:36, 10:16] = 255
+    mask[4:36, 18:24] = 255
+    mask[4:36, 26:32] = 255
+    # missing-prefix probe row at y=44..76 — body would start at x=50 (short prefix
+    # like [A7X]: instead of [Power]:). Strong probe density in the prefix region.
+    mask[44:76, 12:18] = 255
+    mask[44:76, 20:26] = 255
+    mask[44:76, 28:34] = 255
+
+    layout, evidence = compute_prefix_evidence_for_lines(
+        mask,
+        [
+            {
+                "text": "[Power]: msg",
+                "center_y": 20.0,
+                "top_y": 4.0,
+                "bottom_y": 36.0,
+                "line_height": 32.0,
+                "first_box_x": 10.0,
+                "first_box_right_x": 50.0,
+                "segments": [
+                    {"text": "[Power]:", "x1": 10.0, "x2": 50.0, "y1": 4.0, "y2": 36.0},
+                    {"text": "msg", "x1": 80.0, "x2": 110.0, "y1": 8.0, "y2": 34.0},
+                ],
+            },
+            {
+                "text": "epicl",
+                "center_y": 60.0,
+                "top_y": 44.0,
+                "bottom_y": 76.0,
+                "line_height": 32.0,
+                # body starts well to the left of the [Power]: body anchor (80) —
+                # this would be False on within_body_start_range.
+                "first_box_x": 50.0,
+                "first_box_right_x": 80.0,
+                "segments": [
+                    {"text": "epicl", "x1": 50.0, "x2": 80.0, "y1": 44.0, "y2": 76.0},
+                ],
+            },
+        ],
+        median_line_h=32.0,
+        config={
+            "missing_prefix_min_anchor_lines": 1,
+            "missing_prefix_body_start_tolerance": 4.0,
+            "missing_prefix_span_right_padding": 4,
+            "missing_prefix_vertical_padding": 4,
+            "missing_prefix_min_span_nonzero_pixels": 100,
+            "missing_prefix_min_span_density": 0.20,
+            "missing_prefix_max_span_density": 0.5,
+            "missing_prefix_max_largest_component_fraction": 0.8,
+            "missing_prefix_min_line_height_fraction": 0.8,
+            "missing_prefix_max_line_height_fraction": 1.2,
+        },
+    )
+
+    assert layout["anchor_count"] == 1
+    assert evidence[1]["within_body_start_range"] is False  # outside the narrow range
+    assert evidence[1]["has_missing_prefix_evidence"] is True  # but heuristic fires anyway
+
+
+def test_compute_prefix_evidence_for_lines_single_anchor_rejected_when_density_low():
+    """The stricter min_density (0.20) that pairs with min_anchor_lines=1 must reject
+    a probe region that would have passed the old 0.12 threshold. Guards against
+    spurious missing-prefix splits in sparse channels with weak background mask."""
+    mask = np.zeros((120, 200), dtype=np.uint8)
+    # anchor row — strong prefix mask
+    mask[4:36, 10:16] = 255
+    mask[4:36, 18:24] = 255
+    mask[4:36, 26:32] = 255
+    # probe row with density ~0.15 (above old 0.12 floor, below new 0.20 floor)
+    mask[44:76, 14:18] = 255
+    mask[44:76, 22:26] = 255
+
+    _, evidence = compute_prefix_evidence_for_lines(
+        mask,
+        [
+            {
+                "text": "[Power]: msg",
+                "center_y": 20.0,
+                "top_y": 4.0,
+                "bottom_y": 36.0,
+                "line_height": 32.0,
+                "first_box_x": 10.0,
+                "first_box_right_x": 50.0,
+                "segments": [
+                    {"text": "[Power]:", "x1": 10.0, "x2": 50.0, "y1": 4.0, "y2": 36.0},
+                    {"text": "msg", "x1": 80.0, "x2": 110.0, "y1": 8.0, "y2": 34.0},
+                ],
+            },
+            {
+                "text": "weak",
+                "center_y": 60.0,
+                "top_y": 44.0,
+                "bottom_y": 76.0,
+                "line_height": 32.0,
+                "first_box_x": 80.0,
+                "first_box_right_x": 110.0,
+                "segments": [
+                    {"text": "weak", "x1": 80.0, "x2": 110.0, "y1": 44.0, "y2": 76.0},
+                ],
+            },
+        ],
+        median_line_h=32.0,
+        config={
+            "missing_prefix_min_anchor_lines": 1,
+            "missing_prefix_body_start_tolerance": 4.0,
+            "missing_prefix_span_right_padding": 4,
+            "missing_prefix_vertical_padding": 4,
+            "missing_prefix_min_span_nonzero_pixels": 100,
+            "missing_prefix_min_span_density": 0.20,
+            "missing_prefix_max_span_density": 0.5,
+            "missing_prefix_max_largest_component_fraction": 0.8,
+            "missing_prefix_min_line_height_fraction": 0.8,
+            "missing_prefix_max_line_height_fraction": 1.2,
+        },
+    )
+
+    assert evidence[1]["has_missing_prefix_evidence"] is False
+    assert evidence[1]["probe_density"] < 0.20
+
+
 def test_compute_prefix_evidence_for_lines_negative_case_without_anchors():
     mask = np.zeros((120, 160), dtype=np.uint8)
     mask[30:70, 10:30] = 255

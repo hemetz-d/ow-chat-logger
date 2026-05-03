@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 
 from ow_chat_logger.message_processing import collect_screenshot_messages
-from ow_chat_logger.pipeline import extract_chat_lines
+from ow_chat_logger.pipeline import extract_chat_debug_data
 
 pytestmark = pytest.mark.ocr
 
@@ -133,13 +133,21 @@ def test_screenshot_matches_expected(
     assert want_all is not None, f"{expected_path}: missing all_lines"
 
     rgb = _load_rgb(png_path)
-    actual_lines = extract_chat_lines(
+    debug_data = extract_chat_debug_data(
         rgb,
         ocr_engine_session,
         config_overrides=overrides,
         ocr_profile=ocr_profile_session,
     )
-    actual = collect_screenshot_messages(actual_lines)
+    # Thread the prefix-evidence and continuation-gap data so the missing-prefix
+    # heuristic fires here the same way it does in live runtime. Previously this
+    # test only passed `raw_lines`, which silently disabled the heuristic.
+    actual = collect_screenshot_messages(
+        debug_data["raw_lines"],
+        line_ys_by_channel=debug_data.get("raw_line_ys"),
+        raw_line_prefix_evidence_by_channel=debug_data.get("raw_line_prefix_evidence"),
+        raw_continuation_y_gaps=debug_data.get("raw_continuation_y_gaps"),
+    )
 
     _assert_channel_lines_match(
         fixture_name=png_path.name,
