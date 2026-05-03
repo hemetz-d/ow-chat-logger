@@ -67,6 +67,38 @@ def test_classify_targeted_hero_chat_as_system(line):
     assert r["category"] == "system"
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        "You endorsed FlameHawk!",
+        "You endorsed MimiChan!",
+        "Music selected is Kicks (was Any)",
+    ],
+)
+def test_classify_anchored_system_lines(line):
+    """T-50 / priority #2: lines starting with `You endorsed ` or `Music selected
+    is ` must be classified as system, not appended as continuation."""
+    r = classify_line(line)
+    assert r["category"] == "system"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # Legitimate chat messages that happen to contain the substring mid-line.
+        # The `^` anchor on the system pattern must prevent these from filtering.
+        "[Alice]: I think you endorsed the wrong play",
+        "[Bob]: the Music selected is bad",
+    ],
+)
+def test_anchored_system_patterns_do_not_match_inside_chat_messages(line):
+    """T-50 / priority #2 negative: the `^You endorsed ` and `^Music selected is`
+    patterns are anchored to the line start and must not strip a real chat
+    message that incidentally contains the same substring."""
+    r = classify_line(line)
+    assert r["category"] == "standard"
+
+
 def test_voice_lines_muted_is_system_not_concat_bug():
     """Regression: 'muted for' and 'team voice' must be separate patterns."""
     r = classify_line("Unlockable voice lines muted for this match")

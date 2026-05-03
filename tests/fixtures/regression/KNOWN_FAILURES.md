@@ -6,50 +6,52 @@ Most failures here are **pre-existing** — they were present before the T-26 no
 
 ---
 
-### example_04 - two distinct OCR errors on the same player name `Cipe`
-- **Channel:** team_lines
-- **Issues (two separate bugs):**
-  1. `[Cipe]: i die and change` → `[Oipe]: i die and change`: OCR reads the leading capital `C` as `O`. Classic C/O confusion for this font at chat render size.
-  2. `[Flea]: cipe dont switch` → `[Flea]: Cipe dont switch`: the original message body has lowercase `cipe`; the OCR returns uppercase `Cipe`. The capitalisation is OCR-introduced, not original.
-- **Root cause:** Both errors originate in OCR glyph ambiguity at small sizes. Issue 1 is a bracket-region confusion (`C` ↔ `O`). Issue 2 is independent — the lowercase `c` in message content is being read as `C`, suggesting low confidence on short lowercase glyphs in this font/scale.
-- **Note:** Fixing this class of error requires a corpus-based player-name check, post-OCR spell correction, or character-level confidence thresholds — none of which exist yet.
+### example_04 - C/O player-name drift + body case drift
+- **Channel:** team_lines (all_lines passes 100%)
+- **Issues (two OCR drift classes, both confirmed via `--analyze`, 2026-05-03):**
+  1. `[Cipe]: i die and change` → `[Oipe]: i die and change`: OCR reads the leading capital `C` as `O`. Classic C/O confusion for this font at chat render size — same class as ex_27's `MimiChan`→`MimiOhan` and ex_28's `MimiChan`→`MimiOhan`.
+  2. `[Flea]: cipe dont switch` → `[Flea]: Cipe dont switch`: lowercase `c` in body read as uppercase `C`. Independent low-confidence drift on short lowercase glyphs.
+- **Root cause:** OCR glyph ambiguity at chat-render scale. Both classes need a corpus-based player-name check (T-17 deferred) or character-level confidence thresholds — neither exists yet.
+- **Hidden hero info for T-46:** team raw includes `'Cipe switched to Orisa (was Sigma).'` → 2 hero records (`Cipe→Orisa`, `Cipe→Sigma`) when T-46 lands.
 
-### example_05 - two consecutive messages merged into one
-- **Channel:** team_lines
+### example_05 - speaker recovery + body case drift (boundary now splits correctly)
+- **Channel:** team_lines (all_lines passes 100%)
 - **Expected two records:** `[Flea]: cipe` and `[Cipe]: YO`
-- **Current actual:** `[Flea]: Cipe YO` (single record — boundary detection regressed since the original triage; see T-51)
-- **Root cause:** The missing-prefix heuristic does not split this line on the 2026-05-03 `--run-ocr` pass; the `[Cipe]: YO` body is appended in full to the still-open Flea record. Even when the boundary is detected (as it was historically), speaker recovery from the bare `YO` mask is not yet implemented. T-51 covers both — boundary detection consistency across fixtures, and downstream speaker recovery.
-- **Related task:** T-51 (missing-prefix continuation across speakers).
+- **Actual (post #1, 2026-05-03):** `[Flea]: Cipe`, `[unknown]: YO` (boundary detection now works after the anchor-count floor fix; remaining diffs are body case drift `cipe`→`Cipe` and missing speaker recovery on `[unknown]`)
+- **Root cause (boundary now resolved):** Two remaining classes:
+  1. **Speaker recovery missing**: the heuristic splits the line correctly, but the recovered speaker is `[unknown]` not `[Cipe]` — T-51 phase 2 / priority #10 (mask-region OCR re-run on the prefix area).
+  2. **Body case drift `cipe` → `Cipe`** — Tier 5 #15 in priorities; needs character-confidence model or corpus check.
+- **Note:** Previous entry described OCR non-determinism between pytest and analyze runs. The non-determinism still exists at the OCR-engine level, but with the anchor-count fix the heuristic now fires reliably enough that the test outcome is stable. The earlier "merge" failure regime is gone.
+- **Hidden hero info for T-46:** team raw includes `'Flea switched to Wuyang (was Lifeweaver).'` → 2 hero records (`Flea→Wuyang`, `Flea→Lifeweaver`).
 - **See also:** example_13 (same root cause class).
 
-### example_09 - line missing from actual entirely
-- **Channel:** team_lines
+### example_09 - blue-on-blue mask saturation + spurious-space player name
+- **Channel:** team_lines (all_lines passes 100%)
 - **Missing:** `[marcyl7]: :)`
-- **Root cause:** In the raw OCR output the line appears as `[marcyl 7];` — two problems are visible: (1) a spurious space splits the player name into `marcyl` and `7`, and (2) the colon after the closing bracket is read as a semicolon `;` (the latter is now corrected by `_OCR_CHAR_MAP`, so the live failure is the spurious-space split). The `:)` body is also short enough that T-49's threshold may apply — verify with raw box dump whether the body is detected at all.
-- **Related tasks:** T-30 (team color masking quality), T-49 (short-body threshold review).
+- **Root cause (`--analyze`, 2026-05-03):** team_mask is **1,378,650** nonzero pixels — same massive over-coverage as ex_12 / ex_14 / ex_22 (blue-on-blue scene; mask catches background). Raw OCR returns 8 noisy lines including `'[marcyl 7];'` (just the prefix, no body) and various `A7X (Mei)` voice/whisper lines. Anchor count is **0** for the team channel (none of the noisy raw lines qualifies as a clean prefix anchor), so missing-prefix heuristic can't fire. The `:)` body is silently absent — likely the same OCR engine symbol-only short-token dropout class as ex_31's `=)` (the mask probably has the `:)` pixels but OCR doesn't return text for the symbol pair).
+- **Related tasks:** T-30 (team mask saturation on blue-on-blue scenes — primary). The `:)` body absence is the same OCR-engine-limitation class as ex_31 (no task; documented).
+- **Hidden hero info for T-46:** `A7X (Mei)` voice lines (multiple), `marcyl 7 (Roadhog)`, `A7X (Mei) to marcyl 7 (Roadhog)` whisper.
 
-### example_11 - line missing from actual entirely + split-line artefact
-- **Channel:** all_lines
+### example_11 - `[A7X]: gg` absent from OCR (short-body dropout)
+- **Channel:** all_lines (team_lines passes 100% — `[A7X]: what does girltalist mean` correctly captured)
 - **Missing:** `[A7X]: gg`
-- **Present:** `[vhl]: ggwp` (same channel, passes)
-- **Root cause (two separate issues):**
-  1. **Split in raw data:** Even `[vhl]: ggwp` — which ultimately passes — appears as two separate bounding boxes in the raw OCR output rather than one. `reconstruct_lines` successfully recombines them, but it shows the OCR detection here is fragile.
-  2. **Missing detection:** `[A7X]: gg` is entirely absent from the raw OCR. The 2-character `gg` body strongly suggests T-49's short-body threshold is filtering the mask region before OCR runs; the missing prefix is a secondary effect.
-- **Related tasks:** T-49 (short-body threshold), T-30 (mask-threshold problem for this frame).
+- **Present:** `[vhl]: ggwp` (recovered via two raw boxes `'[vhl];'` + `'ggwp'` joined by buffer continuation — works because the prefix opens an empty record and the body fills it)
+- **Root cause (`--analyze`, 2026-05-03):** `[A7X]: gg` is entirely absent from raw OCR — neither the prefix nor the body box appears in either channel's box list. Same OCR-engine-limitation class as ex_31's `=)`: short symbol/letter pair below the engine's detection floor when isolated. The `[vhl]: ggwp` line works because `ggwp` is 4 chars, sufficient for the engine. Anchor count for all channel is **0** (the only "anchor" candidate is the prefix-only `[vhl];`), so missing-prefix heuristic also can't help.
+- **Related tasks:** T-49 (short-body threshold) is one possible angle but the underlying issue is the OCR-engine class (same as ex_31). T-30 covers broader mask coverage.
+- **Hidden hero info for T-46:** team raw includes `'A7X (Mei); Fall back!'`, `'A7X (Mei); Counting down'` (voice lines — A7X→Mei) and `'FlashR (Lúcio) to Girltalist (Mercy); Hello!'` whisper.
 
-### example_12 - line missing from actual entirely
+### example_12 - blue-on-blue mask saturation, OCR returns nothing
 - **Channel:** team_lines
 - **Missing:** `[A7X]: sup dawgs`
-- **Root cause:** The line is absent from raw OCR entirely — the mask never isolates it. The background in this screenshot is a strong blue that is visually very similar to the blue team-chat text color. The HSV range used to mask team messages cannot distinguish the text from the background at this color/brightness combination, so the contour is never found and OCR has nothing to run on.
-- **Related task:** T-30 (team color masking quality)
+- **Root cause (`--analyze`, 2026-05-03):** team_mask is **2,290,286** nonzero pixels (the entire screen-region is essentially masked) but raw OCR is **completely empty**. Mask captures everything; text contours can't be distinguished from the blue background at this color/brightness combination. Same blue-on-blue saturation class as ex_09 / ex_14 / ex_22.
+- **Related task:** T-30 (team color masking quality — primary).
 
-### example_13 - two consecutive messages merged into one
-- **Channel:** team_lines
+### example_13 - speaker recovery missing (boundary now splits correctly)
+- **Channel:** team_lines (all_lines passes 100%)
 - **Expected two records:** `[A7X]: sup dawgs` and `[A7X]: xdd`
-- **Current actual:** `[A7X]: sup dawgs xdd` (single record on the 2026-05-03 `--run-ocr` pass — boundary detection regressed since the original triage; same shape as ex_05)
-- **Root cause:** The missing-prefix heuristic does not split this line on the current pass. T-51 covers boundary detection consistency and downstream speaker recovery.
-- **Related task:** T-51 (missing-prefix continuation across speakers).
-- **See also:** example_05 (same root cause class).
+- **Actual (post #1, 2026-05-03):** `[A7X]: sup dawgs`, `[unknown]: xdd` (boundary detection now stable; only speaker recovery `[unknown]`→`[A7X]` remains)
+- **Root cause:** Speaker recovery missing — T-51 phase 2 / priority #10.
+- **See also:** example_05 (same class).
 
 ### example_14 - multi-line garbage bleed on two messages
 - **Channel:** team_lines
@@ -57,92 +59,95 @@ Most failures here are **pre-existing** — they were present before the T-26 no
   - `[Omphalode]: speak better` → actual: `[Omphalode]: speak better o`
   - `[Omphalode]: u 12?` → actual: `[Omphalode]: u 12? your mom mor o O[RDK/I Odin's Fav Child`
   - `[A7X]: i check on your mom more often` → partially present in raw lines but lost in parsed output
-- **Root cause:** Extremely difficult screenshot: blue team-chat text on a blue background with additional noise pixels. Two compounding problems:
-  1. `[A7X]: i check on your mom more often` is partially detectable in raw lines, but the fragment is garbled enough that it fails prefix matching and is absorbed as continuation into the Omphalode record (T-51 territory).
-  2. Pink text `Odin's Fav Child` is being read from a player-portrait panel that overlaps the chat crop region (T-54 territory).
-- **Related tasks:** T-54 (UI panel bleed — addresses the `Odin's Fav Child` injection); T-51 (missing-prefix continuation — addresses the absorbed `i check on your mom more often`); T-30 (broader blue-on-blue mask quality — the underlying detection gap).
+- **Root cause (`--analyze`, 2026-05-03):** team_mask is **1,185,282 nonzero pixels** (massive over-coverage). All-mask is empty. Three compounding issues:
+  1. **`[A7X]: i check on your mom more often` garbled to `'your mom mor o'`:** OCR detects a partial fragment with no prefix box. It falls through as `category=continuation` and merges onto the open Omphalode record. T-51 territory (missing-prefix recovery), but the fragment may be too damaged to recover the player even with the heuristic working.
+  2. **Stray `'o'` on raw line 3:** appended onto `[Omphalode]: speak better` → `[Omphalode]: speak better o`. Single-character mask artefact.
+  3. **`Odin's Fav Child` panel bleed:** the player-portrait panel's text appears in TEAM mask, not all mask — meaning the panel renders with hue components inside H 96-118 (likely a teal/cyan accent rather than pure pink). **T-54's original "reject pink hue" angle does NOT apply here** — the offending pixels are inside the team band. The fix needs to be **spatial exclusion** of the player-portrait region from the chat crop, not hue rejection. T-54 description has been updated to reflect this.
+- **Related tasks:** T-51 (continuation merge); T-54 (UI panel bleed — re-scoped to spatial exclusion); T-30 (broader mask-coverage tightening).
 
-### example_17 - player-name garble + warning text still glued onto message
+### example_17 - player-name garble (warning bleed is non-deterministic)
 - **Channel:** all_lines
 - **Expected:** `[A7X]: gg`
-- **Actual:** `[A7Xl•.]: gg Warning! You're voting to ban your teammate's preferred hero.`
-- **Root cause (two parts, both still live despite T-27 and T-28 landing):**
-  1. **Player-name artefact:** OCR reads stray pixels adjacent to the closing bracket as extra characters inside the player name token (`A7X` → `A7Xl•.`). Same root-cause class as the trailing-`l` / `I` cleanup in T-15 / T-16, but the suffix here is multi-character noise (`l•.`) that the existing `ocr_fix_closing_bracket` heuristic does not strip. Fixing this class generally needs OCR character-level confidence or a corpus-based player-name check (same blocker as T-17).
-  2. **Warning text bleed survives T-27 / T-28:** T-27 added the hero-ban warning string to `SYSTEM_PATTERNS` and T-28 capped continuation by vertical gap, yet `--run-ocr` (2026-05-03) still emits the warning as message body. The most likely reason: the warning is merged with the `gg` line at the OCR / `reconstruct_lines` stage (same y-band cluster), so `classify_line` sees a single concatenated line, matches `STANDARD_PATTERN` first, and `SYSTEM_REGEX` never gets a chance — system detection only runs as a per-line classification, not a sub-string scrub of an already-classified standard line. **Tracked as T-47.**
+- **Actual (OCR-run-dependent — both observed):**
+  - `pytest --run-ocr` (2026-05-03): `[A7Xl•.]: gg Warning! You're voting to ban your teammate's preferred hero.` (warning bleeds in)
+  - `--analyze` (2026-05-03): `[A7Xl�.]: gg` (warning correctly filtered, no bleed)
+- **Root cause:** Two distinct issues, only one persistent.
+  1. **Player-name artefact (persistent):** OCR reads stray pixels adjacent to the closing bracket as extra characters inside the player name token (`A7X` → `A7Xl•.`/`A7Xl�.`). Same root-cause class as the trailing-`l` / `I` cleanup in T-15 / T-16, but the suffix here is multi-character noise that the existing `ocr_fix_closing_bracket` heuristic does not strip. Fixing this class generally needs OCR character-level confidence or a corpus-based player-name check (same blocker as T-17).
+  2. **Warning text bleed (non-deterministic):** T-27 (warning in `SYSTEM_PATTERNS`) only matches when OCR returns the full warning as ONE line. In this fixture OCR splits the warning across two raw lines (`"Warning! You're voting to ban your teammate's"` + `"preferred hero."`) because the chat-panel width forces a wrap, so the per-line `SYSTEM_REGEX.search` no longer matches either half. T-28 (max vertical gap for continuation) catches the bleed when the y-gap between `gg` and the warning is large enough — in the `--analyze` run it was 207 px (over the ≈140-160 threshold), preventing the bleed. The pytest run must have had different OCR y-coordinates that fell under the threshold. So T-27 + T-28 both work as designed; they happen to fully cover this fixture in some runs and miss in others, depending on OCR's y-precision and reconstruction. **T-47 was filed assuming this was a per-line system-pattern scrub gap; the actual gap is OCR-engine non-determinism on the same input. Re-scope or close T-47 — the per-line logic is sound; the data into it is jittery.**
+- **Hidden hero info for T-46 on this fixture:** team channel has `A7X (Ana) to Rizzmaser303 (Orisa); Hello!` (whisper, 2 hero records) and `clutches4fun (Ashe); Hello!` (greet, 1 record).
 
-### example_18 - message content truncated
+### example_18 - message content truncated (mask gap, NOT crop boundary)
 - **Channel:** team_lines
 - **Expected:** `[Brummer]: guys........... 2-2-2 pls`
 - **Actual:** `[Brummer]: guys........... 2`
-- **Root cause:** The line is already truncated in the raw OCR data — only `[Brummer]; guys........... 2` is present (note also the semicolon instead of colon on the closing bracket, a minor OCR artefact). The remainder `-2-2 pls` is absent from raw data entirely, meaning the crop or mask clips the right-hand portion of this line before OCR runs. Since `2` alone satisfies `"2".isdigit() == True` it would normally be filtered, but here it is appended to the `guys...........` token via the buffer before the digit check fires — giving the truncated but plausible-looking result.
-- **Related task:** T-52 (right-edge body truncation on long messages — same shape on ex_25 confirms it is systemic).
+- **Root cause (`--analyze`, 2026-05-03):** OCR returns `[Brummer]; guys........... 2` with the rightmost box (`2`) ending at x=845 in upscaled coords (~x=291 in screen-region coords). The default `screen_region` width is 400 — there are 189 px of unused horizontal space to the right of the truncation point, so this is **NOT a crop-boundary clip** as the pre-`--analyze` triage assumed. The mask itself is failing to capture `-2-2 pls` despite ample room. Hyphens and digits should mask cleanly in the team band; needs the `team_mask.png` for this fixture inspected to see whether the mask is empty in that region (mask gap) or non-empty but missed by OCR (engine drop similar to ex_31's symbol-dropout).
+- **Related task:** T-52 framing was wrong (this is not the same class as ex_25 line-reconstruction split). Closest fit is T-30 (mask quality) — needs a separate sub-investigation. Document and revisit once the team_mask is inspected.
 
-### example_22 - all_lines emits unrelated content from the team channel
-- **Channel:** all_lines
-- **Expected:** `[A7X]: ich gärtnere im busch deiner muter`, `[A7X]: xd`
-- **Actual (`--run-ocr`, 2026-05-03):** `[Kastelg]: hi gooners`, `[AN]: what is this`
-- **Root cause:** The actual emits content that on screen is in **team chat**, not all chat — so the all-chat mask is picking up team-coloured pixels (or the team mask is leaking into the all-chat detection path). Player-name OCR drift on top: `A7X` → `AN`. Two distinct issues:
-  1. **Channel cross-contamination** — the bigger of the two; needs the per-channel mask debug images on this fixture to determine whether the team mask's HSV upper edge is creeping into the all-chat band, or whether `crop_to_screen_region` is feeding the wrong slice to the all-chat OCR pass.
-  2. **Player-name OCR drift** — the kind of artefact T-15 / T-16 / T-17 already document for trailing characters; here it is `7X` → `N` mid-name, which is a different class.
-- **Related task:** T-53 (channel cross-contamination — direct integration target). Overlaps with T-30 (mask quality) and T-34 (HSV-config propagation).
+### example_22 - all_mask over-leakage causes duplicate detection + missed lines
+- **Channel:** all_lines (team_lines actually passes — confirmed via `--analyze`, 2026-05-03)
+- **Expected all_lines:** `[A7X]: ich gärtnere im busch deiner muter`, `[A7X]: xd`
+- **Actual all_lines (`--analyze`, 2026-05-03):** `[Kastelg]: hi gooners`, `[AN]: what is this`
+- **Root cause (multi-issue):** The screenshot is set in an in-game scene with extensive red/orange wood-paneled walls. The default `all_hsv_lower=[0,150,100]–[20,255,255]` catches that backdrop wholesale: `all_mask` is **2,676,230 nonzero pixels** vs team's **67,888** — 40× over normal. Three downstream effects:
+  1. **Duplicate detection of team-chat content:** OCR runs on the over-leaky all-mask, which covers the same spatial regions as the team-chat text. So `[Kastelg]: hi gooners` and `[A7X]: what is this` (both genuinely team-chat) get re-detected by the all-channel pass. The duplicates appear in all_lines with secondary OCR drift (`A7X` → `AN` in this run).
+  2. **The actual all-chat content is silently absent:** `[A7X]: ich gärtnere im busch deiner muter` and `[A7X]: xd` are nowhere in either channel's raw OCR. The lines are visible in the screenshot but their chat-text colour appears faded — likely outside the all_hsv saturation/value floors (150/100), or buried in the mask noise.
+  3. **`[A7X]` → `[AN]` player-name drift** — secondary OCR artefact, mid-name 7X→N collapse. Different class from T-15/T-16/T-17 trailing-character drift.
+- **Related tasks:** T-53 (mask cross-contamination — direct integration target; the mask audit it calls for explains this fixture). T-30 (HSV-band tightening — the wood-panel backdrop is exactly the case T-30's S/V floor review should cover). T-34 (HSV-config propagation — verify any preset change reaches all consumers).
 
 ### example_23 - two consecutive all-chat messages merged into one
 - **Channel:** all_lines
 - **Expected:** `[Power]: this is overwatch goodbye`, `[A7X]: epic!`
 - **Actual (`--run-ocr`, 2026-05-03):** single record `[Power]: this is overwatch goodbye epicl`
-- **Root cause:** Same shape as example_05 / example_13 (continuation across speakers). The `[A7X]:` prefix for the second message is dropped by OCR, so the `epic!` body has no detectable prefix and is appended to the still-open `Power` record. The trailing `!` is also misread as `l`. T-28's vertical-gap guard does not help here because the two messages are tightly stacked.
-- **Related tasks:** T-51 (continuation merge — primary fix); T-48 (`!`→`l` end-of-body correction — addresses the secondary OCR drift).
+- **Actual (post #1, 2026-05-03):** `[Power]: this is overwatch goodbye`, `[unknown]: epicl` — boundary detection now splits correctly after the anchor-count floor was lowered (1) and the body_start_range gate was relaxed for single-anchor channels. Remaining diffs: speaker recovery (`[unknown]`→`[A7X]`) and end-of-body drift (`epicl`→`epic!`).
+- **Root cause (boundary now resolved):** Two remaining classes:
+  1. **Speaker recovery missing** — T-51 phase 2 / priority #10.
+  2. **End-of-body `!`→`l` drift** — T-48 / priority #3.
+- **Note on the original premise:** The pre-#1 entry described the merge bug (`[Power]: ... epicl` as one record). #1 (anchor-count floor + body_start_range relaxation for single-anchor channels) resolved that root cause. The remaining failures are the two listed above; the merge regime is gone.
 
-### example_24 - same merge as example_23, separate capture
+### example_24 - same as example_23, separate capture
 - **Channel:** all_lines
-- **Expected / Actual:** identical to example_23 above.
-- **Root cause:** Same as example_23 — kept as a second fixture so a future fix can be validated against more than one capture of the bug.
-- **Related tasks:** T-51, T-48 (same as example_23).
+- **Expected / Actual (post #1):** identical to example_23 above. Now produces `[Power]: this is overwatch goodbye`, `[unknown]: epicl`. Remaining failures are speaker recovery (#10) and end-of-body drift (#3).
+- **Note:** Kept as a second fixture so a future fix can be validated against more than one capture of the bug.
+- **Hidden hero info for T-46:** team channel has `bmf→Moira`, `Zacama→Anran`, `GodOfTheGapped→Domina` whisper records.
 
-### example_25 - lobby chat: truncated body, missing line, caret OCR
-- **Channel:** team_lines (lobby "group" chat)
-- **Expected:** `[A7X]: gg bot mimi`, `[Aerotex]: free`, `[MimiChan]: you^^`
-- **Actual (`--run-ocr`, 2026-05-03):** `[A7X]: gg`, `[MimiChan]: youÅA`
-- **Root cause (three distinct issues):**
-  1. **Body truncation:** `[A7X]: gg bot mimi` → `[A7X]: gg`. The trailing `bot mimi` is lost between OCR and the parser. Likely same right-edge-clip class as ex_18.
-  2. **Line entirely missing:** `[Aerotex]: free` is absent from both `team_lines` and `all_lines` actual. Either short-body threshold gating or lobby chat-name colour falling outside the HSV band.
-  3. **Caret-pair misread:** `you^^` → `youÅA`. New OCR character-class drift not in `_OCR_CHAR_MAP` today.
-- **Related tasks:** T-52 (issue 1, right-edge truncation); T-49 (issue 2, short-body threshold) and T-30 (issue 2 alternative cause — lobby mask coverage); T-48 (issue 3, caret-pair correction). The predicted "endorsement leak" from the pre-OCR draft of this entry did not materialize — endorsement lines are correctly filtered today; T-50 anchors the system pattern explicitly anyway.
+### example_25 - lobby chat: line-reconstruction split + caret OCR drift
+- **Channel:** team_lines + all_lines (the lobby renders different speakers in different colour bands; same pattern as ex_26 / ex_28)
+- **Expected:** `[A7X]: gg bot mimi`, `[MimiChan]: you^^` (team) + `[Aerotex]: free` (all)
+- **Actual (`--analyze`, 2026-05-03):** `[A7X]: gg`, `[MimiChan]: you�A` (team) + `[Aerotex]: free` (all, correctly captured)
+- **Root cause:** Two real issues on the team channel; the all channel passes.
+  1. **Line-reconstruction split** (NOT right-edge truncation): OCR returns `bot`, `mimi`, and `[A7Xl: gg` as separate boxes whose y-coordinates span the full `y_merge_threshold=14` window (mimi @ y=1348, bot @ y=1357, prefix @ y=1362). `reconstruct_lines` splits them into two raw lines: `'bot mimi'` (no prefix → falls through as continuation onto an empty buffer → discarded) and `'[A7Xl: gg'` (parses correctly to `[A7X]: gg` via T-15/T-16's missing-closing-bracket recovery). The trailing `bot mimi` is silently dropped. **Pre-`--analyze` triage flagged this as right-edge clip (T-52); that diagnosis was wrong.** No existing task covers this within-line reconstruction split — boundary is exactly at the threshold so even a small bump (15 or 16) would likely fix this fixture, but tightening risks merging genuinely separate lines elsewhere.
+  2. **Caret-pair misread** `you^^` → `you�A` (the `Å` rendered with replacement char in some encodings). Same as ex_27. T-48 covers this.
+- **Note:** Pre-`--analyze` triage incorrectly listed `[Aerotex]: free` as missing and misclassified the truncation. Both errors were artefacts of the regression test's first-channel-fail short-circuit hiding the all_lines content. Expected.json corrected on 2026-05-03 (moved Aerotex to all_lines, dropped the body-truncation framing). Endorsement lines (`Endorsement Received!`, `You endorsed X!`) are correctly filtered today; T-50 anchors the system patterns explicitly anyway.
+- **Related tasks:** T-48 (caret correction). No task covers the line-reconstruction split — kept here as documented limitation.
 
-### example_26 - lobby chat: 3 of 5 expected lines missing
-- **Channel:** team_lines (lobby)
-- **Expected:** `[Akamé]: gg`, `[MimiChan]: gg`, `[Hichamdhakkr]: gg`, `[A7X]: gg bot mimi`, `[Aerotex]: free`
-- **Actual (`--run-ocr`, 2026-05-03):** `[Akamé]: gg`, `[A7X]: gg bot mimi` (only 2 of 5)
-- **Root cause:** Three contiguous short lines (`[MimiChan]: gg`, `[Hichamdhakkr]: gg`, `[Aerotex]: free`) are dropped while the lines above and below them are detected. Tightly-packed chat scrollback with 2-character message bodies (`gg`) is the common factor — the same `min_mask_nonzero_pixels_for_ocr` floor that probably drops `[Aerotex]: free` in example_25 likely drops the `gg` lines here too. The whisper line at the top (`Akamé (Sigma) to FlameHawk (Mercy): Hello!`) and the standard hero greet on line 2 (`FlameHawk (Mercy): Hello!`) are correctly **not** in chat output today (routed to system / hero respectively) — the T-46 hero-info gap is documented in T-46's task entry, not here.
-- **Related tasks:** T-49 (short-body threshold — primary fix); T-30 (mask coverage on lobby panel — alternative/compounding cause); T-46 captures the hero-info wastage on the same screenshot.
-
-### example_27 - lobby chat: continuation merge across speakers + multiple OCR drifts
+### example_27 - lobby chat: multiple OCR drifts + speaker recovery (boundary now stable)
 - **Channel:** team_lines (lobby)
 - **Expected:** `[A7X]: bot mimi what is too much?`, `[MimiChan]: why bot .....`, `[A7X]: for fun!`, `[MimiChan]: okay^^`, `[A7X]: thank you!`
-- **Actual (`--run-ocr`, 2026-05-03):** `[A7X]: bot mimi what is too much?`, `[MimiOhan]: why bot for fun!`, `[MimiChan]: okayÅA`, `[A7X]: thank youl`
-- **Root cause (four distinct issues):**
-  1. **Continuation merge across speakers** (same class as ex_05 / ex_13 / ex_23 / ex_24): `[MimiChan]: why bot .....` and `[A7X]: for fun!` collapse to `[MimiOhan]: why bot for fun!`. The trailing `.....` of the first message is lost (likely sub-confidence dots) and the `[A7X]:` prefix of the second is dropped, so it falls through as continuation onto the still-open MimiChan record.
-  2. **Player-name `C` → `O`** drift on the merged line (`MimiChan` → `MimiOhan`) — same C/O glyph ambiguity as ex_04.
-  3. **Caret-pair misread** `^^` → `ÅA` — same as ex_25 issue 3.
-  4. **Message-body `!` → `l`** on the last line (`thank you!` → `thank youl`) — same artefact class as the trailing-bracket misread in T-15 / T-16, here in message-body content.
-- **Related tasks:** ex_05 / ex_13 / ex_23 / ex_24 (continuation merge family); T-46 documents the wasted hero info (`A7X switched to Genji (was Ana)`, `Hichamdhakkr (Soldier: 76): Hello!`) on the same screenshot.
+- **Actual (post #1, 2026-05-03):** 5 records — `[A7X]: bot mimi what is too much?`, `[MimiOhan]: why bot`, `[unknown]: for fun!`, `[MimiChan]: okay�A`, `[A7X]: thank youl`. Boundary detection now stable across runs (was non-deterministic pre-#1).
+- **Root cause (four remaining issues):**
+  1. **Speaker recovery missing** — `[unknown]: for fun!` should be `[A7X]: for fun!`. Priority #10.
+  2. **Player-name `C` → `O`** drift on line 2 only (`MimiChan` → `MimiOhan`) — same C/O glyph ambiguity as ex_04. The same `MimiChan` reads correctly on line 4 — drift is per-occurrence, not per-fixture. T-17 deferred / priority #12.
+  3. **Caret-pair misread** `^^` → `ÅA` (rendered as `�A` in the report due to encoding) — same as ex_25 issue 3. Mask captures the carets fine; OCR fails to recognize the glyph pair. Priority #3 / T-48.
+  4. **Message-body `!` → `l`** on the last line (`thank you!` → `thank youl`) — same artefact class as T-15 / T-16, in body content. Priority #3 / T-48.
+- **`--analyze` corroboration:** trailing `.....` on line 2 is lost in raw OCR (sub-confidence dots, not in any OCR box). The `A7X switched to Genii (was Ana)` switch line carries a `Genji` → `Genii` OCR drift — same hero-canonicalization concern noted in T-46.
+- **Note:** Pre-#1, this entry recorded the merge regime (`[MimiOhan]: why bot for fun!` as one record). After #1, boundary detection is stable; the merge regime is gone.
 
-### example_28 - lobby chat: line entirely missing + OCR drifts
-- **Channel:** team_lines (lobby)
-- **Expected:** `[MimiChan]: 3 healer ? its to much !`, `[Aerotex]: dude need cass ult for 1 supp`
-- **Actual (`--run-ocr`, 2026-05-03):** `[MimiOhan]: 3 healer ? its to much I` (only 1 of 2)
-- **Root cause:**
-  1. **Line entirely missing:** `[Aerotex]: dude need cass ult for 1 supp` is absent. Same suspected cause as ex_25 / ex_26 for the missing Aerotex line — colour or mask-threshold gap.
-  2. **`MimiChan` → `MimiOhan`** — same C/O drift as ex_27.
-  3. **`!` → `I`** at end of body — same trailing-`!` artefact class as ex_27 issue 4 (here `I` instead of `l`).
-- **Related tasks:** T-30 (mask gap on Aerotex line); T-46 documents the wasted hero info on the same screenshot — three hero-bearing lines are correctly filtered (the switch and two whispers, including the nested-parens whisper that is T-46's hardest single-frame test).
+### example_28 - lobby chat: OCR drifts on MimiChan line
+- **Channel:** team_lines (lobby) + all_lines (Aerotex is genuinely all-chat by colour)
+- **Expected:** `[MimiChan]: 3 healer ? its to much !` (team) + `[Aerotex]: dude need cass ult for 1 supp` (all)
+- **Actual (`--analyze` + `--run-ocr`, 2026-05-03):** `[MimiOhan]: 3 healer ? its to much I` (team) + `[Aerotex]: dude need cass ult for 1 supp` (all, correctly captured)
+- **Root cause:** Two OCR drifts on the team line; no mask gaps, no missing lines, no channel mix-up.
+  1. **`MimiChan` → `MimiOhan`** — C/O drift inside player name; same class as ex_27 and ex_04. Player-name spell-correction territory; remains under T-17 (deferred) as a corpus-based-name-check requirement.
+  2. **`!` → `I`** at end of body — same trailing-`!` artefact class as ex_27 (which read `l` instead of `I` for the same character). T-48 covers the end-of-body trailing-`!` correction.
+- **Note:** The pre-`--analyze` triage in this entry incorrectly listed `[Aerotex]: dude need cass ult for 1 supp` as missing. The line is genuinely all-chat (orange/red HSV band) and is captured correctly today; the original expected.json wrongly placed it in `team_lines`, and the regression test masked the all_lines mismatch because `pytest.fail` on the team channel short-circuits the all-channel assertion. Expected.json corrected on 2026-05-03 to reflect the true channel.
+- **Related tasks:** T-48 (end-of-body `!`→`I` correction). T-46 documents the wasted hero info on the same screenshot — three hero-bearing lines are correctly filtered (the switch and two whispers, including the nested-parens whisper that is T-46's hardest single-frame test).
 
-### example_31 - main-menu chat: short message body dropped
+### example_31 - main-menu chat: OCR engine drops symbol-only short body
 - **Channel:** team_lines (main-menu group chat)
 - **Expected:** `[Microwave]: hello teamings`, `[Joebar79]: hello`, `[Makiko]: hey`, `[Microwave]: joe biden wake up`, `[Joebar79]: gl`, `[Joebar79]: =)`
 - **Actual (`--run-ocr`, 2026-05-03):** all lines present **except** `[Joebar79]: =)`
-- **Root cause:** The 2-character body `=)` is not detected. Most likely the same `min_mask_nonzero_pixels_for_ocr` floor that drops short bodies elsewhere (ex_25 `[Aerotex]: free`, ex_26 `gg` lines) — the `=)` glyphs after masking simply do not clear the threshold. Note that the `_OCR_CHAR_MAP` rewrite of `=` → `-` is **not** the cause here (the line never reaches `classify_line`); the expected JSON keeps the user-typed ground truth `=)` so the regression remains true to what was said in-chat. Predicted main-menu masking concerns from the pre-OCR draft of this entry did NOT materialize — the team mask catches this panel correctly.
-- **Related tasks:** T-30 (mask threshold review for short bodies — same root concern as ex_25 / ex_26 / ex_28). The standard hero greet `Lougian (Zenyatta): Hello!` is correctly routed away from chat lines today; T-46 covers its hero-log emission.
+- **Root cause (per `analyze` run, 2026-05-03):** The mask captures `=)` cleanly — body region for line 6 has 1088 nonzero pixels vs 1600 for the working `gl` body on line 5; both render as obvious 2-character glyphs in `team_mask.png`. The `[Joebar79];` prefix box for line 6 is detected at conf=1.00, but the OCR engine returns **no box at all** for the body region. Final raw line is `'[Joebar79];'` (empty body), which `normalize_finished_message` drops because `not msg`. Cross-checked against the easyocr backend (`--ocr-profile easyocr_master_baseline`) — easyocr drops `=)` too (and additionally drops `gl` and `joe biden wake up`), so this is a class limitation of both supported OCR engines on isolated symbol-only short tokens, not a tunable in our pipeline. The `_OCR_CHAR_MAP` rewrite of `=` → `-` is **not** the cause here; the line never reaches `classify_line`. The expected JSON keeps the user-typed ground truth `=)` so the regression preserves the gap.
+- **Not addressed by:** T-49 (mask threshold — mask is intact), T-48 (character corrections — distinct class), T-30 (mask quality — mask is intact). No active task; documented as a known OCR-engine limitation.
+- **Note on the rest of the fixture:** The standard hero greet `Lougian (Zenyatta): Hello!` is correctly routed away from chat lines today; T-46 covers its hero-log emission.
 
 ---
 

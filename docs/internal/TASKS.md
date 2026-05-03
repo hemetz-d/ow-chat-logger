@@ -19,7 +19,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-47 | example_17: identify why warning text still merges with `gg` despite T-27 / T-28 | structural | 🔴 `open` | — |
 | T-48 | Extend OCR character corrections: `^^`→`ÅA` and end-of-body `!`→`l`/`I` | structural | 🔴 `open` | — |
 | T-49 | Lower or scale `min_mask_nonzero_pixels_for_ocr` so short bodies (`gg`, `=)`, `free`) survive | structural | 🔴 `open` | — |
-| T-50 | Add `^You endorsed ` and `^Music selected is ` to `SYSTEM_PATTERNS` | smell | 🔴 `open` | — |
+| T-50 | Add `^You endorsed ` and `^Music selected is ` to `SYSTEM_PATTERNS` | smell | 🟢 `done` | 2026-05-03 |
 | T-51 | Recover speaker on missing-prefix continuation across speakers (ex_05/13/23/24/27) | structural | 🔴 `open` | — |
 | T-52 | Right-edge body truncation on long messages (ex_18, ex_25) | structural | 🔴 `open` | — |
 | T-53 | example_22: all-chat mask leaks team-chat content; audit per-channel HSV bands | structural | 🔴 `open` | — |
@@ -94,10 +94,10 @@ Each whisper line therefore contributes 2 hero records (sender, target); each sw
 
 **Fix direction:**
 - (a) **New parser patterns** in `parser.py`:
-  - `WHISPER_HERO_PATTERN = re.compile(r"^(?P<p1>[^()]+?)\s*\((?P<h1>[^)]+)\)\s+to\s+(?P<p2>[^()]+?)\s*\((?P<h2>[^)]+)\)\s*:\s*(?P<msg>.*)$", re.IGNORECASE)`. Tolerates the missing-space variant (`Arme264(Mauga)` from example_30 line 3) via `\s*` before `(`. Non-greedy player capture so the pattern stops at the first `(`, leaving any nested parens in `msg` (`(Gravitic Flux)` in example_28 line 5) untouched.
+  - `WHISPER_HERO_PATTERN = re.compile(r"^(?P<p1>[^()]+?)\s*\((?P<h1>[^)]+)\)\s+to\s+(?P<p2>[^()]+?)\s*\((?P<h2>[^)]+)\)\s*:\s*(?P<msg>.*)$", re.IGNORECASE)`. The `\s*` before `(` allows for both `Player (Hero)` and `Player(Hero)` shapes — observed input uses the spaced form (e.g. `Arme264 (Mauga)` in ex_30 line 3, confirmed via `--analyze`). Non-greedy player capture so the pattern stops at the first `(`, leaving any nested parens in `msg` (`(Gravitic Flux)` in example_28 line 5) untouched.
   - `HERO_SWITCH_PATTERN = re.compile(r"^(?P<player>\S+(?:\s\S+)*?)\s+switched to\s+(?P<new>[^()]+?)(?:\s+\(was\s+(?P<old>[^)]+)\))?(?:\s+now)?\s*$", re.IGNORECASE)`. Optional `(was X)` and trailing `now` cover all observed shapes.
 - (b) **Reorder `classify_line`** ([parser.py:102](src/ow_chat_logger/parser.py:102)) so the new patterns match **before** `TARGETED_HERO_CHAT_PATTERN` and `SYSTEM_REGEX`. Today's order discards system-shaped lines first; that order has to flip for whisper/switch.
-- (c) **Hero-roster gating is mandatory** — every captured hero name must pass `canonicalize_hero_name`. OCR garbage (`Pixie`, `Genshi Plus`, `Genji` misread as `Genii`, etc.) must NOT enter the hero log. If either captured hero in a whisper fails canonicalization, emit only the surviving record (or none if both fail); never emit a partial line with a raw OCR hero string.
+- (c) **Hero-roster gating is mandatory** — every captured hero name must pass `canonicalize_hero_name`. OCR garbage (`Pixie`, `Genshi Plus`, `Genji` misread as `Genii`, etc.) must NOT enter the hero log. If either captured hero in a whisper fails canonicalization, emit only the surviving record (or none if both fail); never emit a partial line with a raw OCR hero string. **Concrete risk surfaced by `analyze` on ex_30 (2026-05-03):** `Freja` reads as `Freia` (j→i drift) in 2 of 4 parseable whisper lines on that fixture — those records would be silently dropped by the roster gate. Acceptable as the safe default, but worth surfacing as a metrics signal (count of "hero name failed canonicalization" emissions per session) so we know how often the OCR drift is costing us hero records — without it we'd never know whether the gate is rejecting 5% of lines or 50%.
 - (d) **Emission shape**: extend `normalize_finished_message` ([message_processing.py:14](src/ow_chat_logger/message_processing.py:14)) to handle two new categories:
   - `category="hero_whisper"` → returns a list of up to two `{"category": "hero", "player": …, "hero": …, "msg": ""}` records. The whisper message body itself is NOT logged as chat (it's targeted, not public team/all chat).
   - `category="hero_switch"` → returns a list of up to two hero records (new + optional prior). The `(was OldHero)` half is treated identically to the `(new Hero)` half — same `player|hero` dedup key, no transition metadata.
@@ -122,13 +122,17 @@ Each whisper line therefore contributes 2 hero records (sender, target); each sw
 
 ---
 
-### T-47 · example_17: identify why warning text still merges with `gg` despite T-27 / T-28
+### T-47 · example_17 warning bleed — root cause re-scoped after `--analyze` (2026-05-03)
 - **Severity:** structural
-- **State:** 🔴 `open`
+- **State:** 🔴 `open` (re-scope before any code work)
 - **File:** `src/ow_chat_logger/image_processing.py` (`reconstruct_lines`), `src/ow_chat_logger/parser.py` (`classify_line` / `SYSTEM_REGEX`), `tests/fixtures/regression/example_17.png`
 - **Completed:** —
 
-`--run-ocr` (2026-05-03) on example_17 still emits `[A7Xl•.]: gg Warning! You're voting to ban your teammate's preferred hero.` in `all_lines`, even though T-27 added the warning to `SYSTEM_PATTERNS` and T-28 capped continuation by vertical gap. The warning is being concatenated **into** a standard chat record, so `STANDARD_PATTERN` matches first in `classify_line` and `SYSTEM_REGEX` is never consulted on the resulting body.
+**Original premise (wrong):** the warning text bleed survives T-27 / T-28 because of a per-line system-pattern scrub gap.
+
+**Actual finding (2026-05-03 `--analyze`):** the bleed is **OCR-engine non-deterministic**. In the `pytest --run-ocr` run that motivated this task, OCR returned y-coordinates for the warning lines that fell under T-28's max-vertical-gap threshold, so the warning was appended as continuation. In the `--analyze` run on the same fixture, OCR returned y-coordinates with a 207 px gap between `gg` and the warning — over T-28's threshold — and the bleed did not happen. T-27 only matches when OCR returns the full warning as one line (in this fixture, panel width forces a 2-line split, so T-27 is structurally unable to match either half).
+
+So T-27 + T-28 both work as designed; the per-line system detection is sound; **the data into them is jittery.**
 
 **Investigation steps (do these first, fix-shape depends on result):**
 - (a) Add a temporary debug print in `extract_chat_lines` for ex_17 dumping: raw OCR boxes, their (x, y, w, h, text), and the line list produced by `reconstruct_lines`. Confirm whether the warning and `gg` arrive as one box, two boxes merged by `reconstruct_lines`, or two separate lines that the parser later glues via continuation.
@@ -195,28 +199,6 @@ The default `min_mask_nonzero_pixels_for_ocr` is **24 px**, applied per mask reg
 **Test surface:** ex_25, ex_26, ex_28, ex_31 all become integration targets. Verify ex_29 / ex_30 still pass (their masks are larger; threshold change should not regress them). Add a synthetic test that feeds a single-pixel-cluster noise mask and asserts it is still suppressed.
 
 **Related:** Sibling to T-30 (mask quality). T-30 is about colour-band fidelity; T-49 is about post-mask thresholding. Could be bundled if a single mask-pipeline rework touches both.
-
----
-
-### T-50 · Add `^You endorsed ` and `^Music selected is ` to `SYSTEM_PATTERNS`
-- **Severity:** smell
-- **State:** 🔴 `open`
-- **File:** `src/ow_chat_logger/parser.py:25` (`SYSTEM_PATTERNS`), `tests/test_parser.py`
-- **Completed:** —
-
-Two system-message shapes observed in the new fixtures that today fall through to `category=continuation` (and risk being appended to the previous chat record):
-- `You endorsed FlameHawk!` / `You endorsed MimiChan!` (ex_25 — currently filtered out by chance because they happen to land between two unrelated chat speakers).
-- `Music selected is Kicks (was Any)` (visible near ex_29) — also a candidate false-positive trigger for T-46's hero-switch pattern (`(was Any)` shape) if T-50 lands after T-46.
-
-**Fix direction:** Add two anchored regex entries to `SYSTEM_PATTERNS`:
-- `r"^You endorsed "` — anchored to start so it cannot match inside a player message that mentions endorsement.
-- `r"^Music selected is "` — same anchoring.
-
-Bump `SYSTEM_REGEX` rebuild (it's a single `"|".join(SYSTEM_PATTERNS)` so the change is implicit).
-
-**Test surface:** unit cases in `tests/test_parser.py` for both patterns (positive: filtered as system; negative: chat message containing the substring mid-sentence is **not** filtered). Re-run `--run-ocr` to confirm no regression on existing fixtures.
-
-**Related:** **Land before T-46** — T-46's `HERO_SWITCH_PATTERN` will misfire on `Music selected is X (was Y)` if the system pattern is not in place first. T-46's task body already calls this out as a dependency.
 
 ---
 
@@ -290,23 +272,23 @@ Likely cause: HSV-band overlap. The default team band is H 96–118, the default
 
 ---
 
-### T-54 · Reject non-chat UI panel bleed into team mask
+### T-54 · Spatially exclude UI panel from chat crop (re-scoped after `--analyze`)
 - **Severity:** structural
-- **State:** 🔴 `open`
-- **File:** `src/ow_chat_logger/image_processing.py` (mask construction + region rejection), `src/ow_chat_logger/config.py` (rejection HSV bands), `tests/fixtures/regression/example_14.*`
+- **State:** 🔴 `open` (re-scoped 2026-05-03)
+- **File:** `src/ow_chat_logger/image_processing.py` (mask construction + region exclusion), `src/ow_chat_logger/config.py` (`screen_region` and any new exclusion-region keys), `tests/fixtures/regression/example_14.*`
 - **Completed:** —
 
-ex_14 emits a player-portrait panel's pink text (`Odin's Fav Child`) as message content: actual `[Omphalode]: u 12? your mom mor o O[RDK/I Odin's Fav Child`. The team mask is too tolerant — it accepts pixel hues from a UI element that overlaps the chat crop region.
+ex_14 emits a player-portrait panel's text (`Odin's Fav Child`) as part of the previous chat record. **Original premise (sub-option b) was wrong:** the offending pixels are NOT pink/magenta — `--analyze` (2026-05-03) showed `team_mask=1,185,282` nonzero pixels with all-mask empty, meaning the panel text is being captured by the **team** mask. The panel renders with hue components inside H 96-118 (teal/cyan accent), not in the H 145-175 pink/magenta band T-35's palette analysis assumed. A hue-rejection band would not exclude these pixels.
 
-**Fix direction (two viable angles):**
-- (a) **Tighten the crop / exclude UI region.** If the player-portrait panel always renders in a fixed sub-region of the chat crop (likely the right edge), exclude that sub-region. Cheap but brittle if the panel position changes between game modes.
-- (b) **Add an explicit rejection HSV band.** Pink / magenta hues (H 145–175 with high saturation) are not used by any in-game chat colour (per T-35's palette analysis — `MAGENTA` and `PINK` exist but render at a specific saturation/value combo). Compute the team mask, then subtract any contour whose mean hue falls in the rejection band. More robust than (a).
+**Fix direction:** Spatial exclusion only.
+- (a) **Identify the player-portrait panel's bounding box** in the chat capture region. Inspect the cropped image for ex_14 and any other fixture where the panel overlaps. The panel is likely a fixed sub-region of the chat crop (right edge, specific y-range when a player is selected), so a static exclusion rectangle should work for most captures.
+- (b) **Subtract the exclusion rectangle from the mask after thresholding** (set those pixels to 0). Cheap and deterministic.
+- (c) **Make the exclusion configurable** via a new `chat_region_exclusions` config key (list of `[x, y, w, h]` tuples) so future panel-bleed shapes can be added without code changes.
+- (d) **Risk:** if the panel position varies (different game modes, hero detail panels, etc.), a static rectangle will miss some cases. Acceptable for the observed ex_14 case; revisit if more bleed shapes appear.
 
-The KNOWN_FAILURES ex_14 entry also flags `[A7X]: i check on your mom more often` as "partially detectable, lost in continuation" — that part is a different class (T-51 territory) and should remain documented separately even if T-54 lands cleanly.
+**Test surface:** ex_14 is the direct target — the `[Omphalode]: u 12?` line should drop the trailing portrait-panel garbage. Add a synthetic test that paints a teal-band pixel patch over a clean chat capture and asserts it does not leak into the parsed lines when the exclusion region covers it.
 
-**Test surface:** ex_14 is the direct target — the `Omphalode]: u 12?` line should drop the trailing portrait-panel garbage. Add a synthetic test that paints a pink hue patch over a clean chat capture and asserts it does not leak into the parsed lines.
-
-**Related:** T-30 (broader team-mask quality work). T-54 is the surgical fix for the one observed UI-bleed class; further panel-bleed shapes can be folded in if discovered.
+**Related:** T-30 (broader team-mask quality work). T-54 is now narrowly scoped to spatial exclusion; the original hue-rejection angle is dropped per the analyze finding.
 
 ---
 
