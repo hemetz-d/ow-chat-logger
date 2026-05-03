@@ -2,7 +2,7 @@
 
 Internal backlog and cleanup notes.
 
-Derived from the senior design review (2026-04-03), updated 2026-04-17 after full codebase re-verification.
+Derived from the senior design review (2026-04-03), updated 2026-05-03 after the regression-fixture expansion and hero-detection scoping pass.
 Each task has a severity, location, description, and tracked state.
 
 Severity: **bug** | **structural** | **smell**
@@ -15,8 +15,17 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | ID | Title | Severity | State | Completed |
 |----|-------|----------|-------|-----------|
 | T-30 | Improve team-chat color masking for blue-on-blue scenarios | structural | 🔴 `open` | — |
-| T-32 | Stale "Related tasks" references in `KNOWN_FAILURES.md` | smell | 🔴 `open` | — |
-| T-33 | Undocumented regression failures for example_22/23/24 | smell | 🔴 `open` | — |
+| T-46 | Broaden hero detection: capture whisper and switch-announcement lines | structural | 🔴 `open` | — |
+| T-47 | example_17: identify why warning text still merges with `gg` despite T-27 / T-28 | structural | 🔴 `open` | — |
+| T-48 | Extend OCR character corrections: `^^`→`ÅA` and end-of-body `!`→`l`/`I` | structural | 🔴 `open` | — |
+| T-49 | Lower or scale `min_mask_nonzero_pixels_for_ocr` so short bodies (`gg`, `=)`, `free`) survive | structural | 🔴 `open` | — |
+| T-50 | Add `^You endorsed ` and `^Music selected is ` to `SYSTEM_PATTERNS` | smell | 🔴 `open` | — |
+| T-51 | Recover speaker on missing-prefix continuation across speakers (ex_05/13/23/24/27) | structural | 🔴 `open` | — |
+| T-52 | Right-edge body truncation on long messages (ex_18, ex_25) | structural | 🔴 `open` | — |
+| T-53 | example_22: all-chat mask leaks team-chat content; audit per-channel HSV bands | structural | 🔴 `open` | — |
+| T-54 | Reject non-chat UI panel bleed into team mask (ex_14 `Odin's Fav Child`) | structural | 🔴 `open` | — |
+| T-32 | Stale "Related tasks" references in `KNOWN_FAILURES.md` | smell | 🟢 `done` | 2026-05-03 |
+| T-33 | Undocumented regression failures for example_22/23/24 | smell | 🟢 `done` | 2026-05-03 |
 | T-34 | Verify GUI chat-color settings propagate to all detection paths | structural | 🔵 `review` | — |
 | T-35 | Expose in-game chat color options as presets for team/all chat | structural | 🔴 `open` | — |
 | T-36 | Capture regression screenshot fixtures for every chat-color preset | structural | 🔴 `open` | — |
@@ -69,6 +78,237 @@ Detailed entries for completed tasks are not repeated below; see git history (co
 ---
 
 ## Structural Issues
+
+### T-46 · Broaden hero detection: capture whisper and switch-announcement lines
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/parser.py`, `src/ow_chat_logger/message_processing.py`, `src/ow_chat_logger/hero_roster.py`, `src/ow_chat_logger/logger.py`, `tests/test_parser.py`, regression fixtures `example_25`–`example_31`
+- **Completed:** —
+
+Today only one chat shape produces a hero record: `Player (Hero): msg` (`HERO_PATTERN` in [parser.py:11](src/ow_chat_logger/parser.py:11)). Two other shapes carry hero info on screen and are silently discarded:
+
+1. **Whisper / targeted chat** — `Player1 (Hero1) to Player2 (Hero2): msg`. Today `TARGETED_HERO_CHAT_PATTERN` ([parser.py:20](src/ow_chat_logger/parser.py:20)) matches first and routes the line to `category=system`, so the message body **and** both hero attributions are lost. Fixtures: example_26, example_28, example_30.
+2. **Hero-switch announcement** — `Player switched to Hero now` and `Player switched to Hero (was OldHero)`. Today the `switched to ` substring in `SYSTEM_PATTERNS` ([parser.py:30](src/ow_chat_logger/parser.py:30)) matches and the line is dropped. The user has confirmed both the new and the prior hero are equally valuable to capture (timeline / transition is **not** of interest — every `(player, hero)` pair we observe is). Fixtures: example_27, example_28, example_29.
+
+Each whisper line therefore contributes 2 hero records (sender, target); each switch-with-`(was)` line contributes 2 hero records (new, prior); each switch-without-`(was)` line contributes 1.
+
+**Fix direction:**
+- (a) **New parser patterns** in `parser.py`:
+  - `WHISPER_HERO_PATTERN = re.compile(r"^(?P<p1>[^()]+?)\s*\((?P<h1>[^)]+)\)\s+to\s+(?P<p2>[^()]+?)\s*\((?P<h2>[^)]+)\)\s*:\s*(?P<msg>.*)$", re.IGNORECASE)`. Tolerates the missing-space variant (`Arme264(Mauga)` from example_30 line 3) via `\s*` before `(`. Non-greedy player capture so the pattern stops at the first `(`, leaving any nested parens in `msg` (`(Gravitic Flux)` in example_28 line 5) untouched.
+  - `HERO_SWITCH_PATTERN = re.compile(r"^(?P<player>\S+(?:\s\S+)*?)\s+switched to\s+(?P<new>[^()]+?)(?:\s+\(was\s+(?P<old>[^)]+)\))?(?:\s+now)?\s*$", re.IGNORECASE)`. Optional `(was X)` and trailing `now` cover all observed shapes.
+- (b) **Reorder `classify_line`** ([parser.py:102](src/ow_chat_logger/parser.py:102)) so the new patterns match **before** `TARGETED_HERO_CHAT_PATTERN` and `SYSTEM_REGEX`. Today's order discards system-shaped lines first; that order has to flip for whisper/switch.
+- (c) **Hero-roster gating is mandatory** — every captured hero name must pass `canonicalize_hero_name`. OCR garbage (`Pixie`, `Genshi Plus`, `Genji` misread as `Genii`, etc.) must NOT enter the hero log. If either captured hero in a whisper fails canonicalization, emit only the surviving record (or none if both fail); never emit a partial line with a raw OCR hero string.
+- (d) **Emission shape**: extend `normalize_finished_message` ([message_processing.py:14](src/ow_chat_logger/message_processing.py:14)) to handle two new categories:
+  - `category="hero_whisper"` → returns a list of up to two `{"category": "hero", "player": …, "hero": …, "msg": ""}` records. The whisper message body itself is NOT logged as chat (it's targeted, not public team/all chat).
+  - `category="hero_switch"` → returns a list of up to two hero records (new + optional prior). The `(was OldHero)` half is treated identically to the `(new Hero)` half — same `player|hero` dedup key, no transition metadata.
+  - `process_finished` / `collect_normalized_records` need to handle the list return shape (today `normalize_finished_message` returns one record or `None`).
+- (e) **Dedup behaviour stays put** — `hero_dedup` is keyed `player|hero` ([message_processing.py:84](src/ow_chat_logger/message_processing.py:84)). Repeated whispers (example_30 emits `ArkyPie→Reaper` four times across the visible 5 lines) collapse to one log row. A player switching back to a previously-seen hero will be deduped — acceptable per "timeline irrelevant".
+- (f) **Leave `Music selected is X (was Y)` in `SYSTEM_PATTERNS`** — same `(was Y)` shape as a switch but **not** hero info (it's the in-game music selector). Add an explicit `^Music selected is ` to `SYSTEM_PATTERNS` so the `HERO_SWITCH_PATTERN` cannot misfire on it. Verify against the line visible near example_29 (`Music selected is Kicks (was Any)`).
+- (g) **Out of scope (separate follow-ups, do NOT bundle):**
+  - `^You endorsed ` system-pattern addition (example_25 noise) — small `SYSTEM_PATTERNS` extension, not hero work.
+  - Narrowing `parser._OCR_CHAR_MAP` so `=` → `-` does not corrupt message bodies like `=)` (example_31). Touches T-26 territory; separate task.
+  - Capturing OldHero as a "transition" with timestamp metadata. Explicitly rejected — only capturing matters.
+
+**Test surface:**
+- `tests/test_parser.py` — unit cases for each new pattern shape: standard whisper, whisper with missing space before `(`, whisper with nested parens in body, switch with `(was X)`, switch with trailing `now`, switch with neither, plus negative cases (whisper-shaped line where one hero name fails roster canonicalization → only the valid record is emitted; `Music selected is X (was Y)` does NOT match the switch pattern after the system-pattern is extended).
+- **Regression fixtures** (`tests/fixtures/regression/`):
+  - `example_29.png` (`Miyaki switched to Kiriko (was Ana)`) and `example_30.png` (5 whisper lines, including the missing-space-before-`(` shape and 4× repeated `ArkyPie→Reaper` for dedup verification) **already pass today on the chat-lines side** — both expected to emit empty `team_lines` and `all_lines`, and both do. Once T-46 lands, they become the integration test for the **hero log** side (extend `collect_screenshot_messages` with `include_hero_lines=True` or add a sibling assertion that captures the hero records produced).
+  - `example_27.png` and `example_28.png` carry hero-bearing lines (switch / whisper) that are correctly filtered today; T-46 must extract the hero info without re-introducing those lines into the chat-line output.
+  - `example_26.png` carries a whisper that is correctly filtered today (chat-lines side); T-46 must capture both `Akamé→Sigma` and `FlameHawk→Mercy` from that single line.
+
+**Related:**
+- T-30 covers the lobby/main-menu chat-panel masking gaps surfaced by ex_25 / ex_26 / ex_28 / ex_31 — separate from T-46. The chat-line failures on those fixtures are masking, not hero detection.
+- The surprise from the 2026-05-03 `--run-ocr` pass: ex_17's warning-text bleed is **still live** despite T-27 (warning in `SYSTEM_PATTERNS`) and T-28 (vertical-gap continuation) being done — likely OCR / `reconstruct_lines` is merging the warning with the `gg` line before classification, so `STANDARD_PATTERN` matches first and `SYSTEM_REGEX` never gets a shot. Logged in `KNOWN_FAILURES.md` ex_17 entry. Out of scope for T-46 but worth a follow-up task once the merge stage is identified.
+
+---
+
+### T-47 · example_17: identify why warning text still merges with `gg` despite T-27 / T-28
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/image_processing.py` (`reconstruct_lines`), `src/ow_chat_logger/parser.py` (`classify_line` / `SYSTEM_REGEX`), `tests/fixtures/regression/example_17.png`
+- **Completed:** —
+
+`--run-ocr` (2026-05-03) on example_17 still emits `[A7Xl•.]: gg Warning! You're voting to ban your teammate's preferred hero.` in `all_lines`, even though T-27 added the warning to `SYSTEM_PATTERNS` and T-28 capped continuation by vertical gap. The warning is being concatenated **into** a standard chat record, so `STANDARD_PATTERN` matches first in `classify_line` and `SYSTEM_REGEX` is never consulted on the resulting body.
+
+**Investigation steps (do these first, fix-shape depends on result):**
+- (a) Add a temporary debug print in `extract_chat_lines` for ex_17 dumping: raw OCR boxes, their (x, y, w, h, text), and the line list produced by `reconstruct_lines`. Confirm whether the warning and `gg` arrive as one box, two boxes merged by `reconstruct_lines`, or two separate lines that the parser later glues via continuation.
+- (b) If two lines: check the y-gap between them and confirm T-28's max-vertical-gap factor is being applied. May reveal T-28's threshold is too lenient for this fixture.
+- (c) If one line / merged box: the merge is upstream of the parser. Either tighten `reconstruct_lines`' y-merge tolerance, or — more robustly — split mask contours that span discontinuous text colours (the `gg` is in red/all-chat, the warning is in red **system** style; they may be visually distinguishable).
+
+**Fix direction (depends on root cause):**
+- If continuation merge: a second-pass scrub that re-runs `SYSTEM_REGEX` against substrings of an already-classified standard line, splitting the body at the system match and dropping the system suffix. Cheap and surgical.
+- If line merge in `reconstruct_lines`: split the merge step on text-colour discontinuity within the mask contour.
+- If single OCR box: probably out of our control short of a different OCR backend; document and move on.
+
+**Test surface:** `tests/test_regression_screenshots.py::test_screenshot_matches_expected[example_17]` is the single integration target. Add a unit test in `tests/test_parser.py` for the substring-scrub case if that path is taken.
+
+**Related:** Closes the live bug noted in `KNOWN_FAILURES.md` ex_17 entry. T-27 and T-28 both stay `done` — they did what they said they would, just not enough on their own for this particular fixture.
+
+---
+
+### T-48 · Extend OCR character corrections: `^^`→`ÅA` and end-of-body `!`→`l`/`I`
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/parser.py` (`_OCR_CHAR_MAP` / `normalize`), new body-only correction map, `tests/test_parser.py`
+- **Completed:** —
+
+Three new OCR drift classes surfaced in the 2026-05-03 `--run-ocr` pass that the existing single-character `_OCR_CHAR_MAP` does not cover:
+
+1. **Caret pair `^^` → `ÅA`** — fired on ex_25 (`you^^` → `youÅA`) and ex_27 (`okay^^` → `okayÅA`). `^^` is a common laugh/ack emoticon in chat; the misread is consistent (always `ÅA`, not random). Looks like a font-glyph collision specific to chat font rendering.
+2. **End-of-body `!` → `l`** — ex_27 (`thank you!` → `thank youl`).
+3. **End-of-body `!` → `I`** — ex_28 (`its to much !` → `its to much I`).
+
+The existing `_OCR_CHAR_MAP` is a single-character map applied unconditionally via `text.translate(...)` to every line. Extending it naively breaks legitimate content:
+- A blanket `Å` → `^` would corrupt names like `MåmadøraLuxi` (ex_19).
+- A blanket `l` → `!` or `I` → `!` would corrupt the player-name closing-bracket fix that T-15 / T-16 already depend on, and would mangle words like `lol` and `I`.
+
+**Fix direction:** Two-tier map.
+- (a) **Pair-substitution map** for unambiguous multi-char drifts that only make sense as their corrected form: `ÅA` → `^^` (the inverse direction of the misread, applied as a string `.replace`, not a `translate` map). Add as a new `_OCR_PAIR_MAP` dict run after the existing `_OCR_CHAR_MAP`. Pairs are anchored — full-string match — to avoid corrupting names that incidentally contain `ÅA`.
+- (b) **End-of-body trailing-character correction** for `!`: if a chat-body line ends in `l` or `I` and the second-to-last character is one of `[a-z!?.]` (suggests a sentence-ending punctuation context, not a word like `okayI`), rewrite the trailing `l`/`I` to `!`. Apply this **only** to the message body, never to player names. Mirrors the spirit of `ocr_fix_closing_bracket` but for body-trailing punctuation.
+- (c) Both rules require a regression test that proves they don't fire on legitimate content (`lol`, `I`, `cool`, names ending in `l`/`I`).
+
+**Test surface:** unit cases in `tests/test_parser.py` for each correction (positive and negative); ex_25, ex_27, ex_28, ex_31 are the integration targets that should improve. Verify ex_19's `MåmadøraLuxi` does not regress.
+
+**Related:** Same family as T-26 (OCR character-pair ambiguity, done). Out of scope: a corpus-based spell correction pass — keep this targeted at observed glyph collisions.
+
+---
+
+### T-49 · Lower or scale `min_mask_nonzero_pixels_for_ocr` so short bodies survive
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/config.py:247` (`min_mask_nonzero_pixels_for_ocr`), `src/ow_chat_logger/pipeline.py` (the call site that filters mask regions before OCR), regression fixtures
+- **Completed:** —
+
+A consistent failure pattern across the 2026-05-03 `--run-ocr` pass: short message bodies are entirely dropped before reaching OCR. Affected fixtures:
+- ex_25: `[Aerotex]: free` (4-char body) entirely missing.
+- ex_26: three `[…]: gg` lines (2-char body) entirely missing — a 5-line scrollback collapses to 2.
+- ex_28: `[Aerotex]: dude need cass ult for 1 supp` missing — though here the body is **not** short, so the cause may differ; verify with raw box dump before assuming it shares this root cause.
+- ex_31: `[Joebar79]: =)` (2-char body) entirely missing.
+
+The default `min_mask_nonzero_pixels_for_ocr` is **24 px**, applied per mask region before OCR runs. A 2-character chat-font glyph at the default scale clears far less than 24 mask pixels in the body region (the prefix `[Joebar79]:` clears comfortably; the `=)` does not). The threshold was tuned to filter false-positive noise, not message brevity.
+
+**Fix direction:**
+- (a) Audit the threshold's purpose — when was it added, what false positives did it suppress? `git log -p --follow src/ow_chat_logger/config.py | grep -A3 min_mask_nonzero_pixels_for_ocr`. If it exists purely to block tiny noise specks (single-pixel-cluster artefacts), lowering to 8 or 12 should be safe.
+- (b) Better: scale the threshold per region width. A region 200 px wide with 24 mask pixels is noise; a region 25 px wide with 24 mask pixels is a 2-character message. Compute as a fraction of region area or width.
+- (c) Best (but costlier): keep the floor low but add a post-OCR confidence gate — let the region through, run OCR, drop the line only if no OCR text comes back with reasonable confidence. Pushes the noise filter to where the data actually exists.
+
+**Test surface:** ex_25, ex_26, ex_28, ex_31 all become integration targets. Verify ex_29 / ex_30 still pass (their masks are larger; threshold change should not regress them). Add a synthetic test that feeds a single-pixel-cluster noise mask and asserts it is still suppressed.
+
+**Related:** Sibling to T-30 (mask quality). T-30 is about colour-band fidelity; T-49 is about post-mask thresholding. Could be bundled if a single mask-pipeline rework touches both.
+
+---
+
+### T-50 · Add `^You endorsed ` and `^Music selected is ` to `SYSTEM_PATTERNS`
+- **Severity:** smell
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/parser.py:25` (`SYSTEM_PATTERNS`), `tests/test_parser.py`
+- **Completed:** —
+
+Two system-message shapes observed in the new fixtures that today fall through to `category=continuation` (and risk being appended to the previous chat record):
+- `You endorsed FlameHawk!` / `You endorsed MimiChan!` (ex_25 — currently filtered out by chance because they happen to land between two unrelated chat speakers).
+- `Music selected is Kicks (was Any)` (visible near ex_29) — also a candidate false-positive trigger for T-46's hero-switch pattern (`(was Any)` shape) if T-50 lands after T-46.
+
+**Fix direction:** Add two anchored regex entries to `SYSTEM_PATTERNS`:
+- `r"^You endorsed "` — anchored to start so it cannot match inside a player message that mentions endorsement.
+- `r"^Music selected is "` — same anchoring.
+
+Bump `SYSTEM_REGEX` rebuild (it's a single `"|".join(SYSTEM_PATTERNS)` so the change is implicit).
+
+**Test surface:** unit cases in `tests/test_parser.py` for both patterns (positive: filtered as system; negative: chat message containing the substring mid-sentence is **not** filtered). Re-run `--run-ocr` to confirm no regression on existing fixtures.
+
+**Related:** **Land before T-46** — T-46's `HERO_SWITCH_PATTERN` will misfire on `Music selected is X (was Y)` if the system pattern is not in place first. T-46's task body already calls this out as a dependency.
+
+---
+
+### T-51 · Recover speaker on missing-prefix continuation across speakers
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/buffer.py` (`MessageBuffer.feed`), `src/ow_chat_logger/image_processing.py` (prefix-evidence extraction), `tests/test_buffer.py`, regression fixtures
+- **Completed:** —
+
+The single biggest quality drag on the regression suite — affects **5 fixtures** (ex_05, ex_13, ex_23, ex_24, ex_27). Pattern: two adjacent chat lines from different speakers, the second speaker's `[Player]:` prefix is dropped by OCR, so the body falls through `classify_line` as `category=continuation` and is appended to the previous record. Today's missing-prefix heuristic correctly **detects** that a new speaker started (it splits the record into `[unknown]`) — but it does not **recover** the actual speaker name.
+
+Concrete failure shapes from 2026-05-03:
+- ex_05 / ex_13: two consecutive in-game team-chat lines glued (recovered as `[unknown]` today, was full merge originally).
+- ex_23 / ex_24: two consecutive all-chat lines glued; here the missing-prefix heuristic does not even split (output is one record `[Power]: this is overwatch goodbye epicl`).
+- ex_27: lobby-chat continuation merge `[MimiChan]: why bot ..... [A7X]: for fun!` collapses to `[MimiOhan]: why bot for fun!`.
+
+So there are actually two sub-problems: (i) detection of the speaker boundary is inconsistent between fixtures (works for ex_05/13, fails for ex_23/24/27), and (ii) speaker recovery never works.
+
+**Fix direction (sequenced):**
+- (a) **Make boundary detection consistent first.** Audit `MessageBuffer.feed`'s `prefix_evidence` path and the `missing_prefix_*` config keys. ex_23 / ex_24 / ex_27 all merge into one record, suggesting the prefix-evidence threshold is not being met for these screenshots. Compare per-fixture mask-density numbers in the prefix region — likely the thresholds (`missing_prefix_min_span_density: 0.12`, etc.) are calibrated for the in-game chat panel and are too strict for tighter line spacing in lobby/all-chat captures.
+- (b) **Speaker recovery via mask-region OCR** — once a boundary is detected, re-run OCR on the prefix mask region with relaxed thresholds (smaller min-area, no allowlist filter) to extract the player name. If OCR returns a plausible bracketed name, attribute the record to it; if not, keep the `[unknown]` fallback.
+- (c) **Frame-to-frame speaker continuity (optional follow-up)** — if a speaker spoke in the previous frame at a similar y-position, that name is a strong prior for the current bracketless line. This is bigger scope and depends on having a per-frame line-y history; defer until (a) and (b) are not enough.
+
+**Test surface:** ex_05, ex_13, ex_23, ex_24, ex_27 all become integration targets. Add unit cases in `tests/test_buffer.py` for the prefix-evidence threshold tuning. Synthetic prefix-mask images for the OCR-recovery path.
+
+**Related:** Touches the same code as T-38 (embedded chat prefix detection, done). Largest-impact open task in the regression backlog.
+
+---
+
+### T-52 · Right-edge body truncation on long messages
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/config.py:222` (`screen_region`), `src/ow_chat_logger/image_processing.py` (mask + crop bounds), `src/ow_chat_logger/pipeline.py` (`crop_to_screen_region`), regression fixtures
+- **Completed:** —
+
+Long messages are clipped on the right before reaching OCR. Confirmed on:
+- ex_18: `[Brummer]: guys........... 2-2-2 pls` truncates to `2` — only `[Brummer]; guys........... 2` is in raw OCR.
+- ex_25: `[A7X]: gg bot mimi` truncates to `gg` — `bot mimi` never reaches the parser.
+
+`KNOWN_FAILURES.md` ex_18 entry already flagged this as "upstream of the parser (mask or crop cuts off the end of long messages)". The new ex_25 evidence rules out fixture-specific causes — same shape on a different chat panel (lobby vs in-game) suggests a systemic right-edge boundary issue.
+
+**Fix direction (investigation first):**
+- (a) Dump the per-fixture mask image (already supported via `debug_snaps`) for ex_18 and ex_25. Visually confirm whether the right-edge clip is in the **mask** (text is in the mask but cut at the right) or in the **crop** (`screen_region` width too narrow for this resolution / chat panel).
+- (b) If crop: `screen_region` default `(80, 400, 400, 600)` is 400 px wide. For 1920×1080 captures the chat panel may run wider. Either widen the default or compute dynamically per-resolution.
+- (c) If mask: the contour-finding step may be splitting text where the colour mask weakens (e.g. anti-aliased edge of the panel background). Consider a horizontal dilation pass before contour detection so adjacent text fragments stay connected.
+
+**Test surface:** ex_18, ex_25 are the integration targets. Add a synthetic test that crops a long-message screenshot to varied widths and asserts the body length scales with crop width, not with a fixed cap.
+
+**Related:** May overlap with T-30 if the mask is at fault. Independent of T-49 (T-49 is about mask area thresholds; T-52 is about mask spatial extent).
+
+---
+
+### T-53 · example_22: all-chat mask leaks team-chat content
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/image_processing.py` (HSV ranges + mask construction), `src/ow_chat_logger/config.py:238-241` (default HSV ranges), `tests/fixtures/regression/example_22.*`
+- **Completed:** —
+
+`--run-ocr` on ex_22 emits `[Kastelg]: hi gooners` and `[AN]: what is this` in `all_lines` — but on screen those two lines are **team chat**, not all chat. The all-chat mask is picking up team-chat-coloured pixels (or vice-versa). The expected `all_lines` content (`[A7X]: ich gärtnere im busch deiner muter` + `[A7X]: xd`) is missing entirely.
+
+Likely cause: HSV-band overlap. The default team band is H 96–118, the default all-chat band is H 0–20. These don't directly overlap, but anti-aliasing and the `RED` enemy-default at H≈175 (which the all-chat band catches via the H=179→0 wrap, see T-35's analysis) may be giving the all-chat detection path extra hue coverage that catches anti-aliased team-chat pixels.
+
+**Fix direction:**
+- (a) Inspect both per-channel mask debug images for ex_22. Confirm whether (i) the team mask is correct and the all mask is wrongly catching team text, (ii) both masks are catching the same pixels (cross-contamination), or (iii) the all mask is empty and the parser is somehow attributing team content to all_lines downstream.
+- (b) If hue overlap: tighten the all-chat upper bound (e.g. H 0–18 instead of 0–20) and confirm the actual `RED` chat colour still passes via the wrap-around (H 170–179) — this also unlocks part of T-35's preset story.
+- (c) If pixel-level cross-contamination at boundaries: add a per-pixel exclusivity rule (a pixel that matches both masks goes to neither, or to the dominant one by saturation).
+
+**Test surface:** ex_22 is the direct target. Cross-check ex_19 / ex_20 / ex_21 / ex_23 / ex_24 (other all-chat-only fixtures) for regression after the band tightens.
+
+**Related:** Overlaps with T-30 (team mask quality), T-34 (HSV-config propagation), T-35 (chat-colour presets). T-35 already has the corrected hue ranges in its body — T-53 is the immediate regression-driven fix that should land first.
+
+---
+
+### T-54 · Reject non-chat UI panel bleed into team mask
+- **Severity:** structural
+- **State:** 🔴 `open`
+- **File:** `src/ow_chat_logger/image_processing.py` (mask construction + region rejection), `src/ow_chat_logger/config.py` (rejection HSV bands), `tests/fixtures/regression/example_14.*`
+- **Completed:** —
+
+ex_14 emits a player-portrait panel's pink text (`Odin's Fav Child`) as message content: actual `[Omphalode]: u 12? your mom mor o O[RDK/I Odin's Fav Child`. The team mask is too tolerant — it accepts pixel hues from a UI element that overlaps the chat crop region.
+
+**Fix direction (two viable angles):**
+- (a) **Tighten the crop / exclude UI region.** If the player-portrait panel always renders in a fixed sub-region of the chat crop (likely the right edge), exclude that sub-region. Cheap but brittle if the panel position changes between game modes.
+- (b) **Add an explicit rejection HSV band.** Pink / magenta hues (H 145–175 with high saturation) are not used by any in-game chat colour (per T-35's palette analysis — `MAGENTA` and `PINK` exist but render at a specific saturation/value combo). Compute the team mask, then subtract any contour whose mean hue falls in the rejection band. More robust than (a).
+
+The KNOWN_FAILURES ex_14 entry also flags `[A7X]: i check on your mom more often` as "partially detectable, lost in continuation" — that part is a different class (T-51 territory) and should remain documented separately even if T-54 lands cleanly.
+
+**Test surface:** ex_14 is the direct target — the `Omphalode]: u 12?` line should drop the trailing portrait-panel garbage. Add a synthetic test that paints a pink hue patch over a clean chat capture and asserts it does not leak into the parsed lines.
+
+**Related:** T-30 (broader team-mask quality work). T-54 is the surgical fix for the one observed UI-bleed class; further panel-bleed shapes can be folded in if discovered.
+
+---
 
 ### T-30 · Improve team-chat color masking for blue-on-blue scenarios
 - **Severity:** structural
@@ -315,33 +555,7 @@ When chat history lived in `chat_log.csv` / `hero_log.csv` the user could grep, 
 
 ## Smells
 
-### T-32 · Stale "Related tasks" references in `KNOWN_FAILURES.md`
-- **Severity:** smell
-- **State:** 🔴 `open`
-- **File:** `tests/fixtures/regression/KNOWN_FAILURES.md:64-72`
-- **Completed:** —
-
-The example_17 entry lists "Related tasks: T-27 (add hero-ban warning to SYSTEM_PATTERNS), T-28 (max vertical gap for continuation)". Both tasks are now `done` (2026-04-06). The entry must either be removed (if example_17 no longer fails) or updated with the current root cause — the text as written implies those fixes are still pending.
-
-**Fix direction:** Re-run `pytest --run-ocr tests/test_regression_screenshots.py`, compare actual output for example_17 against the expected JSON, and either delete the entry or rewrite the root-cause explanation to reflect what remains after T-27 and T-28 landed.
-
-**Test surface:** The regression suite itself is the test — whatever example_17 now emits is the ground truth for the updated note.
-
----
-
-### T-33 · Undocumented regression failures for example_22, example_23, example_24
-- **Severity:** smell
-- **State:** 🔴 `open`
-- **File:** `tests/fixtures/regression/KNOWN_FAILURES.md`, `tests/fixtures/regression/example_22.*`, `tests/fixtures/regression/example_23.*`, `tests/fixtures/regression/example_24.*`
-- **Completed:** —
-
-`pytest --run-ocr tests/test_regression_screenshots.py` reports 12 failures on master, but `KNOWN_FAILURES.md` only documents 9 of them (04, 05, 09, 11, 12, 13, 14, 17, 18). Three failing examples are undocumented:
-- **example_22** (team_lines): expected `[A7X]: ich gärtnere im busch deiner muter` + `[A7X]: xd`, actual emits unrelated `[Kastelg]: hi gooners` + `[AN]: what is this` — suggests either a wrong `expected.json` or a coloring/crop misclassification.
-- **example_23** and **example_24** (all_lines): both expect `[Power]: this is overwatch goodbye` followed by `[A7X]: epic!`, actual merges them into a single `[Power]: this is overwatch goodbye epicl` — looks like a missing-prefix / continuation-merge issue similar in shape to example_17.
-
-**Fix direction:** Triage each of the three fixtures. For each, decide whether (a) the expected JSON is wrong and should be updated, (b) it reveals a real bug and should be split off into its own task, or (c) it's a genuine OCR/masking limitation that belongs in `KNOWN_FAILURES.md`.
-
-**Test surface:** `tests/test_regression_screenshots.py` — these three examples.
+*No open smells.*
 
 ---
 
