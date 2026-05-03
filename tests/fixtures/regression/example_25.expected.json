@@ -1,9 +1,10 @@
 {
   "team_lines": [
     "[A7X]: gg bot mimi",
-    "[Aerotex]: free",
     "[MimiChan]: you^^"
   ],
-  "all_lines": [],
+  "all_lines": [
+    "[Aerotex]: free"
+  ],
   "config_overrides": {}
 }
