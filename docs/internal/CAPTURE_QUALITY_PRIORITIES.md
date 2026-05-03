@@ -16,7 +16,7 @@ Risk scale: **LOW** (well-bounded, easy to revert) · **MED** (could regress unr
 |---|---|---|---|---|---|
 | **Tier 1 — Quick wins** ||||||
 | 1 | ~~Anchor-count floor + body_start_range relaxation for single-anchor channels~~ ✅ **DONE 2026-05-03** | XS | LOW | ex_05, _13, _23, _24, _27 (boundary now splits; remaining diffs are #3 / #10 / #12) | T-51 (sub-cause) |
-| 2 | System patterns: `^You endorsed `, `^Music selected is ` | XS | LOW | (preventive) | T-50 |
+| 2 | ~~System patterns: `^You endorsed `, `^Music selected is `~~ ✅ **DONE 2026-05-03** | XS | LOW | (preventive) | T-50 |
 | **Tier 2 — Small focused fixes** ||||||
 | 3 | OCR character corrections: `ÅA`→`^^`, end-of-body `!`→`l`/`I` | S | LOW | ex_23, _24, _25, _27, _28 (drift parts) | T-48 |
 | 4 | `y_merge_threshold` tuning + within-line reconstruction | S | MED | ex_25 (split) | none |
