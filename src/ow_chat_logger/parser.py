@@ -38,6 +38,11 @@ SYSTEM_PATTERNS = [
     r"players in channel",
     r"to access voice",
     r"Warning! You're voting to ban your teammate's preferred hero",
+    # Anchored on `^` so they only match the line start. A chat message that
+    # mentions the substring mid-sentence (e.g. `[Alice]: I think you endorsed
+    # the wrong play`) must NOT be filtered as system.
+    r"^You endorsed ",
+    r"^Music selected is ",
 ]
 
 # Single-character OCR corrections: maps misread char → canonical char.

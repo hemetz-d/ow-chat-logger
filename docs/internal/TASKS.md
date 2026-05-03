@@ -19,7 +19,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-47 | example_17: identify why warning text still merges with `gg` despite T-27 / T-28 | structural | 🔴 `open` | — |
 | T-48 | Extend OCR character corrections: `^^`→`ÅA` and end-of-body `!`→`l`/`I` | structural | 🔴 `open` | — |
 | T-49 | Lower or scale `min_mask_nonzero_pixels_for_ocr` so short bodies (`gg`, `=)`, `free`) survive | structural | 🔴 `open` | — |
-| T-50 | Add `^You endorsed ` and `^Music selected is ` to `SYSTEM_PATTERNS` | smell | 🔴 `open` | — |
+| T-50 | Add `^You endorsed ` and `^Music selected is ` to `SYSTEM_PATTERNS` | smell | 🟢 `done` | 2026-05-03 |
 | T-51 | Recover speaker on missing-prefix continuation across speakers (ex_05/13/23/24/27) | structural | 🔴 `open` | — |
 | T-52 | Right-edge body truncation on long messages (ex_18, ex_25) | structural | 🔴 `open` | — |
 | T-53 | example_22: all-chat mask leaks team-chat content; audit per-channel HSV bands | structural | 🔴 `open` | — |
@@ -199,28 +199,6 @@ The default `min_mask_nonzero_pixels_for_ocr` is **24 px**, applied per mask reg
 **Test surface:** ex_25, ex_26, ex_28, ex_31 all become integration targets. Verify ex_29 / ex_30 still pass (their masks are larger; threshold change should not regress them). Add a synthetic test that feeds a single-pixel-cluster noise mask and asserts it is still suppressed.
 
 **Related:** Sibling to T-30 (mask quality). T-30 is about colour-band fidelity; T-49 is about post-mask thresholding. Could be bundled if a single mask-pipeline rework touches both.
-
----
-
-### T-50 · Add `^You endorsed ` and `^Music selected is ` to `SYSTEM_PATTERNS`
-- **Severity:** smell
-- **State:** 🔴 `open`
-- **File:** `src/ow_chat_logger/parser.py:25` (`SYSTEM_PATTERNS`), `tests/test_parser.py`
-- **Completed:** —
-
-Two system-message shapes observed in the new fixtures that today fall through to `category=continuation` (and risk being appended to the previous chat record):
-- `You endorsed FlameHawk!` / `You endorsed MimiChan!` (ex_25 — currently filtered out by chance because they happen to land between two unrelated chat speakers).
-- `Music selected is Kicks (was Any)` (visible near ex_29) — also a candidate false-positive trigger for T-46's hero-switch pattern (`(was Any)` shape) if T-50 lands after T-46.
-
-**Fix direction:** Add two anchored regex entries to `SYSTEM_PATTERNS`:
-- `r"^You endorsed "` — anchored to start so it cannot match inside a player message that mentions endorsement.
-- `r"^Music selected is "` — same anchoring.
-
-Bump `SYSTEM_REGEX` rebuild (it's a single `"|".join(SYSTEM_PATTERNS)` so the change is implicit).
-
-**Test surface:** unit cases in `tests/test_parser.py` for both patterns (positive: filtered as system; negative: chat message containing the substring mid-sentence is **not** filtered). Re-run `--run-ocr` to confirm no regression on existing fixtures.
-
-**Related:** **Land before T-46** — T-46's `HERO_SWITCH_PATTERN` will misfire on `Music selected is X (was Y)` if the system pattern is not in place first. T-46's task body already calls this out as a dependency.
 
 ---
 
