@@ -14,15 +14,14 @@ Most failures here are **pre-existing** — they were present before the T-26 no
 - **Root cause:** OCR glyph ambiguity at chat-render scale. Both classes need a corpus-based player-name check (T-17 deferred) or character-level confidence thresholds — neither exists yet.
 - **Hidden hero info for T-46:** team raw includes `'Cipe switched to Orisa (was Sigma).'` → 2 hero records (`Cipe→Orisa`, `Cipe→Sigma`) when T-46 lands.
 
-### example_05 - missing-prefix split works in analyze, fails in pytest
+### example_05 - speaker recovery + body case drift (boundary now splits correctly)
 - **Channel:** team_lines (all_lines passes 100%)
 - **Expected two records:** `[Flea]: cipe` and `[Cipe]: YO`
-- **Actual (OCR-run-dependent — both observed):**
-  - `pytest --run-ocr`: `[Flea]: Cipe YO` (single record — boundary detection failed)
-  - `--analyze` (2026-05-03): `[Flea]: Cipe`, `[unknown]: YO` (boundary detected — anchor=3, has_missing=True, probe density 0.30; speaker recovery missing)
-- **Root cause:** Two classes, both real.
-  1. **OCR non-determinism on boundary detection** (same pattern as ex_13, ex_17, ex_27): the missing-prefix heuristic fires correctly when OCR returns `YO` cleanly as a separate raw line; merges when OCR groups the boxes differently. The body-case drift (`cipe` → `Cipe`) is consistent across runs.
-  2. **Speaker recovery never works**: even when the heuristic splits the line, the recovered speaker is `[unknown]` not `[Cipe]`. T-51 covers both.
+- **Actual (post #1, 2026-05-03):** `[Flea]: Cipe`, `[unknown]: YO` (boundary detection now works after the anchor-count floor fix; remaining diffs are body case drift `cipe`→`Cipe` and missing speaker recovery on `[unknown]`)
+- **Root cause (boundary now resolved):** Two remaining classes:
+  1. **Speaker recovery missing**: the heuristic splits the line correctly, but the recovered speaker is `[unknown]` not `[Cipe]` — T-51 phase 2 / priority #10 (mask-region OCR re-run on the prefix area).
+  2. **Body case drift `cipe` → `Cipe`** — Tier 5 #15 in priorities; needs character-confidence model or corpus check.
+- **Note:** Previous entry described OCR non-determinism between pytest and analyze runs. The non-determinism still exists at the OCR-engine level, but with the anchor-count fix the heuristic now fires reliably enough that the test outcome is stable. The earlier "merge" failure regime is gone.
 - **Hidden hero info for T-46:** team raw includes `'Flea switched to Wuyang (was Lifeweaver).'` → 2 hero records (`Flea→Wuyang`, `Flea→Lifeweaver`).
 - **See also:** example_13 (same root cause class).
 
@@ -47,15 +46,12 @@ Most failures here are **pre-existing** — they were present before the T-26 no
 - **Root cause (`--analyze`, 2026-05-03):** team_mask is **2,290,286** nonzero pixels (the entire screen-region is essentially masked) but raw OCR is **completely empty**. Mask captures everything; text contours can't be distinguished from the blue background at this color/brightness combination. Same blue-on-blue saturation class as ex_09 / ex_14 / ex_22.
 - **Related task:** T-30 (team color masking quality — primary).
 
-### example_13 - missing-prefix split works in analyze, fails in pytest
+### example_13 - speaker recovery missing (boundary now splits correctly)
 - **Channel:** team_lines (all_lines passes 100%)
 - **Expected two records:** `[A7X]: sup dawgs` and `[A7X]: xdd`
-- **Actual (OCR-run-dependent — both observed):**
-  - `pytest --run-ocr`: `[A7X]: sup dawgs xdd` (single record — boundary detection failed)
-  - `--analyze` (2026-05-03): `[A7X]: sup dawgs`, `[unknown]: xdd` (boundary detected — anchor=4, has_missing=True for line 2; speaker recovery missing)
-- **Root cause:** Same OCR non-determinism as ex_05 / ex_27. T-51 covers both boundary consistency and speaker recovery.
-- **Related task:** T-51.
-- **See also:** example_05 (same root cause class).
+- **Actual (post #1, 2026-05-03):** `[A7X]: sup dawgs`, `[unknown]: xdd` (boundary detection now stable; only speaker recovery `[unknown]`→`[A7X]` remains)
+- **Root cause:** Speaker recovery missing — T-51 phase 2 / priority #10.
+- **See also:** example_05 (same class).
 
 ### example_14 - multi-line garbage bleed on two messages
 - **Channel:** team_lines
@@ -101,14 +97,17 @@ Most failures here are **pre-existing** — they were present before the T-26 no
 - **Channel:** all_lines
 - **Expected:** `[Power]: this is overwatch goodbye`, `[A7X]: epic!`
 - **Actual (`--run-ocr`, 2026-05-03):** single record `[Power]: this is overwatch goodbye epicl`
-- **Root cause (confirmed via `--analyze`, 2026-05-03):** OCR returns `[Power]; this is overwatch goodbye` and `epicl` as **two separate raw lines** (y=862 and y=982 — gap of 120 px, well beyond `y_merge_threshold`). The merge happens not in OCR but in the parser: `epicl` has no prefix box, so it falls through as `category=continuation` and is appended to the still-open Power record. The missing-prefix heuristic SHOULD split it, but **`anchor_count=1` on the all channel** (the channel has only one prefix-bearing line — `[Power]:`; `[Match]:` is filtered by `IGNORED_SENDERS` before counting). The heuristic requires `missing_prefix_min_anchor_lines: 2` to compute `body_start_range`, so probing is skipped (`probe_area=0`) and the recovery never triggers. The trailing `!` → `l` drift on `epicl` is a secondary OCR class.
-- **Related tasks:** T-51 (continuation merge — specifically the anchor-count floor blocking sparse-channel detection is the live blocker here); T-48 (`!`→`l` end-of-body correction — addresses the secondary OCR drift).
+- **Actual (post #1, 2026-05-03):** `[Power]: this is overwatch goodbye`, `[unknown]: epicl` — boundary detection now splits correctly after the anchor-count floor was lowered (1) and the body_start_range gate was relaxed for single-anchor channels. Remaining diffs: speaker recovery (`[unknown]`→`[A7X]`) and end-of-body drift (`epicl`→`epic!`).
+- **Root cause (boundary now resolved):** Two remaining classes:
+  1. **Speaker recovery missing** — T-51 phase 2 / priority #10.
+  2. **End-of-body `!`→`l` drift** — T-48 / priority #3.
+- **Note on the original premise:** The pre-#1 entry described the merge bug (`[Power]: ... epicl` as one record). #1 (anchor-count floor + body_start_range relaxation for single-anchor channels) resolved that root cause. The remaining failures are the two listed above; the merge regime is gone.
 
-### example_24 - same merge as example_23, separate capture
+### example_24 - same as example_23, separate capture
 - **Channel:** all_lines
-- **Expected / Actual:** identical to example_23 above.
-- **Root cause:** Same as example_23 (anchor-count floor blocks recovery; confirmed via `--analyze`). Kept as a second fixture so a future fix can be validated against more than one capture of the bug.
-- **Related tasks:** T-51, T-48 (same as example_23). T-46 will additionally extract hero info from the team channel's whispers (`bmf→Moira`, `Zacama→Anran`, `GodOfTheGapped→Domina`) — currently filtered as system, surfaced by `--analyze` as low-hanging hero records.
+- **Expected / Actual (post #1):** identical to example_23 above. Now produces `[Power]: this is overwatch goodbye`, `[unknown]: epicl`. Remaining failures are speaker recovery (#10) and end-of-body drift (#3).
+- **Note:** Kept as a second fixture so a future fix can be validated against more than one capture of the bug.
+- **Hidden hero info for T-46:** team channel has `bmf→Moira`, `Zacama→Anran`, `GodOfTheGapped→Domina` whisper records.
 
 ### example_25 - lobby chat: line-reconstruction split + caret OCR drift
 - **Channel:** team_lines + all_lines (the lobby renders different speakers in different colour bands; same pattern as ex_26 / ex_28)
@@ -120,19 +119,17 @@ Most failures here are **pre-existing** — they were present before the T-26 no
 - **Note:** Pre-`--analyze` triage incorrectly listed `[Aerotex]: free` as missing and misclassified the truncation. Both errors were artefacts of the regression test's first-channel-fail short-circuit hiding the all_lines content. Expected.json corrected on 2026-05-03 (moved Aerotex to all_lines, dropped the body-truncation framing). Endorsement lines (`Endorsement Received!`, `You endorsed X!`) are correctly filtered today; T-50 anchors the system patterns explicitly anyway.
 - **Related tasks:** T-48 (caret correction). No task covers the line-reconstruction split — kept here as documented limitation.
 
-### example_27 - lobby chat: continuation merge + multiple OCR drifts (non-deterministic)
+### example_27 - lobby chat: multiple OCR drifts + speaker recovery (boundary now stable)
 - **Channel:** team_lines (lobby)
 - **Expected:** `[A7X]: bot mimi what is too much?`, `[MimiChan]: why bot .....`, `[A7X]: for fun!`, `[MimiChan]: okay^^`, `[A7X]: thank you!`
-- **Actual:** OCR is **non-deterministic** between runs on this fixture. Two observed regimes:
-  - `pytest --run-ocr` (2026-05-03): 4 lines — `[A7X]: bot mimi what is too much?`, `[MimiOhan]: why bot for fun!` (merged), `[MimiChan]: okayÅA`, `[A7X]: thank youl`. Boundary detection fails on the why-bot/for-fun split.
-  - `--analyze` (2026-05-03): 5 lines — same first line, then `[MimiOhan]: why bot`, `[unknown]: for fun!` (split, speaker not recovered), `[MimiChan]: okayÅA`, `[A7X]: thank youl`. Boundary detection succeeds; speaker recovery still missing.
-- **Root cause (four issues, all real regardless of which regime fires):**
-  1. **Continuation merge across speakers** (same class as ex_05 / ex_13 / ex_23 / ex_24): `[A7X]:` prefix on `for fun!` is dropped by OCR, so the body either merges into the previous record (boundary failure) or splits into `[unknown]` (boundary succeeds). T-51 covers both — boundary consistency and downstream speaker recovery.
-  2. **Player-name `C` → `O`** drift on line 2 only (`MimiChan` → `MimiOhan`) — same C/O glyph ambiguity as ex_04. The same `MimiChan` reads correctly on line 4 in both regimes — drift is per-occurrence, not per-fixture. T-17 (deferred) territory.
-  3. **Caret-pair misread** `^^` → `ÅA` (rendered as `�A` in the report due to encoding) — same as ex_25 issue 3. Mask captures the carets fine; OCR fails to recognize the glyph pair.
-  4. **Message-body `!` → `l`** on the last line (`thank you!` → `thank youl`) — same artefact class as the trailing-bracket misread in T-15 / T-16, here in message-body content.
-- **`--analyze` corroboration:** trailing `.....` on line 2 is lost in raw OCR (sub-confidence dots, not in any OCR box). The `A7X switched to Genii (was Ana)` switch line **also** carries a `Genji` → `Genii` OCR drift, mirroring the `Freja`→`Freia` drift seen in ex_30 — same hero-canonicalization concern noted in T-46.
-- **Related tasks:** T-51 (continuation merge — primary, both regimes); T-48 (caret + end-of-body `!`→`l`); T-17 deferred (player-name C/O drift). T-46 documents the wasted hero info on the same screenshot.
+- **Actual (post #1, 2026-05-03):** 5 records — `[A7X]: bot mimi what is too much?`, `[MimiOhan]: why bot`, `[unknown]: for fun!`, `[MimiChan]: okay�A`, `[A7X]: thank youl`. Boundary detection now stable across runs (was non-deterministic pre-#1).
+- **Root cause (four remaining issues):**
+  1. **Speaker recovery missing** — `[unknown]: for fun!` should be `[A7X]: for fun!`. Priority #10.
+  2. **Player-name `C` → `O`** drift on line 2 only (`MimiChan` → `MimiOhan`) — same C/O glyph ambiguity as ex_04. The same `MimiChan` reads correctly on line 4 — drift is per-occurrence, not per-fixture. T-17 deferred / priority #12.
+  3. **Caret-pair misread** `^^` → `ÅA` (rendered as `�A` in the report due to encoding) — same as ex_25 issue 3. Mask captures the carets fine; OCR fails to recognize the glyph pair. Priority #3 / T-48.
+  4. **Message-body `!` → `l`** on the last line (`thank you!` → `thank youl`) — same artefact class as T-15 / T-16, in body content. Priority #3 / T-48.
+- **`--analyze` corroboration:** trailing `.....` on line 2 is lost in raw OCR (sub-confidence dots, not in any OCR box). The `A7X switched to Genii (was Ana)` switch line carries a `Genji` → `Genii` OCR drift — same hero-canonicalization concern noted in T-46.
+- **Note:** Pre-#1, this entry recorded the merge regime (`[MimiOhan]: why bot for fun!` as one record). After #1, boundary detection is stable; the merge regime is gone.
 
 ### example_28 - lobby chat: OCR drifts on MimiChan line
 - **Channel:** team_lines (lobby) + all_lines (Aerotex is genuinely all-chat by colour)
