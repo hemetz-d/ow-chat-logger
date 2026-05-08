@@ -18,7 +18,7 @@ Risk scale: **LOW** (well-bounded, easy to revert) · **MED** (could regress unr
 | 1 | ~~Anchor-count floor + body_start_range relaxation for single-anchor channels~~ ✅ **DONE 2026-05-03** | XS | LOW | ex_05, _13, _23, _24, _27 (boundary now splits; remaining diffs are #3 / #10 / #12) | T-51 (sub-cause) |
 | 2 | ~~System patterns: `^You endorsed `, `^Music selected is `~~ ✅ **DONE 2026-05-03** | XS | LOW | (preventive) | T-50 |
 | **Tier 2 — Small focused fixes** ||||||
-| 3 | OCR character corrections: `ÅA`→`^^`, end-of-body `!`→`l`/`I` | S | LOW | ex_23, _24, _25, _27, _28 (drift parts) | T-48 |
+| 3 | OCR character corrections: end-of-body `!`→`l`/`I` (caret-pair `ÅA`→`^^` dropped — see #3 entry) | S | LOW | ex_23, _24, _27, _28 (trailing-`!` drift fixed; tests still fail on speaker recovery / player-name drift) | T-48 (partial done 2026-05-08) |
 | 4 | `y_merge_threshold` tuning + within-line reconstruction | S | MED | ex_25 (split) | none |
 | 5 | Lower `min_mask_nonzero_pixels_for_ocr` (+ post-OCR confidence) | S | MED | enables short-body detection (paired with #13) | T-49 |
 | 6 | ex_18 right-edge mask gap investigation | S | LOW | ex_18, possibly ex_25 partial | T-30 (re-scoped) |
@@ -35,10 +35,15 @@ Risk scale: **LOW** (well-bounded, easy to revert) · **MED** (could regress unr
 | 14 | OCR non-determinism on boundary detection | XL | — | ex_05, ex_13, ex_17, ex_27 (run-to-run jitter) | none |
 | 15 | Body case drift (lowercase → uppercase on first char) | XL | — | ex_04, ex_05 (body parts) | T-17 (folded) |
 
-**Cumulative projection (post-#1, 2026-05-03):**
-- ~~After Tier 1: 2 fewer failing tests (ex_23, ex_24).~~ Original projection was wrong: #1 affects **5 fixtures** (ex_05, _13, _23, _24, _27), not 2. Boundary detection now stable on all 5. None of those 5 currently *pass* the test (they still fail on `[unknown]` speaker recovery + body OCR drift) but the merge regime is gone, replaced by clean splits — the test failure surface is now exactly what #3 + #10 + #12 will fix.
-- After Tier 1 + Tier 2 (#3): expect **2 fewer failing tests** (ex_23, ex_24 — `[unknown]: epicl` becomes `[unknown]: epic!` and the test still fails because of `[unknown]` recovery; needs #10 to fully pass).
-- After Tier 1 + 2 + 3 (#10 lands): expect **5 fewer failing tests** (ex_05, _13, _23, _24, _27 fully resolved on the recovery path; ex_27 still fails on `MimiChan→MimiOhan` via #12).
+**Cumulative projection (post-#1 + #3 trailing-`!` only, 2026-05-08):**
+- ~~After Tier 1: 2 fewer failing tests (ex_23, ex_24).~~ Original projection was wrong: #1 affects **5 fixtures** (ex_05, _13, _23, _24, _27), not 2. Boundary detection now stable on all 5.
+- **After #3 partial (2026-05-08, landed):** end-of-body `!` drift fixed on 4 affected fixtures. Concrete deltas:
+  - ex_23 / _24: `[unknown]: epicl` → `[unknown]: epic!` (still fails; only `[unknown]`→`[A7X]` left for #10)
+  - ex_27: `[A7X]: thank youl` → `[A7X]: thank you!` (still fails on `[MimiOhan]` drift via #12, `[unknown]: for fun!` via #10, and the `okay^^` caret drift left intentionally uncorrected)
+  - ex_28: `its to much I` → `its to much !` (still fails on `MimiChan→MimiOhan` via #12)
+  - **Failing test count unchanged at 16** — every affected fixture has additional independent issues that #10 / #12 / #4 must close.
+- **Caret-pair `ÅA`→`^^` was implemented and reverted** — narrow per-glyph fix that only fired on one player's emoticon style across 2 fixtures. Investment ratio too poor; the precedent of accumulating per-pair OCR fixes in a hardcoded map is worse than the body-OCR fidelity gain. Revisit if a corpus-based or character-confidence approach lands.
+- After #3 + #10: expect **5 fewer failing tests** (ex_05, _13, _23, _24, _27 fully resolved on the recovery path; ex_27 still fails on `MimiChan→MimiOhan` via #12).
 - After Tier 4: most player-name and mask-saturation failures resolved — likely down to 2-4 remaining failures in Tier 5 territory.
 
 **#1 implementation summary (commit pending):**
@@ -78,19 +83,20 @@ ex_25's `You endorsed FlameHawk!` and the `Music selected is Kicks (was Any)` li
 
 ## Tier 2 — Small focused fixes
 
-### #3 · OCR character corrections: caret pair + end-of-body `!`
-**Effort:** S · **Risk:** LOW · **Fixtures fixed:** partial ex_23, _24, _25, _27, _28
+### #3 · End-of-body `!` correction (partial — caret-pair dropped) — landed 2026-05-08
+**Effort:** S · **Risk:** LOW · **Fixtures fixed:** trailing-`!` body OCR on ex_23, _24, _27, _28 (test counts unchanged — independent failures remain)
 
-Three OCR drift classes uncovered by `--analyze`:
-- **Caret pair `^^` → `ÅA`** (ex_25 `you^^`→`youÅA`, ex_27 `okay^^`→`okayÅA`). String-level reverse map: `ÅA`→`^^` applied after `_OCR_CHAR_MAP`.
-- **End-of-body `!` → `l`** (ex_27 `thank you!`→`thank youl`, ex_23/24 `epic!`→`epicl`). Apply when body ends in `l` or `I` and second-to-last char is in `[a-z!?.]`.
-- **End-of-body `!` → `I`** (ex_28 `much !`→`much I`). Same shape as `!`→`l` variant.
+**What landed:**
+- `message_processing._fix_body_trailing_punct(body)` invoked from `normalize_finished_message` after `REPORT_SUFFIX_RE` strip and before category dispatch. Two narrow rules:
+  - body ends in `<word>l` where `<word>` is in a small chat-interjection whitelist (`epic`, `you`, `nice`, `gg`, `wp`, `awesome`, etc.) → trailing `l` becomes `!`. Whitelist-driven to avoid corrupting `cool`, `lol`, `kill`, `Daniel`.
+  - body ends in standalone capital `I` after whitespace → `!`. Risk: corrupts uncommon "...am I"/"...was I" endings, accepted because trailing-`I`-without-punctuation is rare in OW chat.
+- Unit tests in `tests/test_message_processing.py` cover positive cases for each interjection and the standalone-`I` rule, negative cases for `cool`/`lol`/`kill`/`Daniel`/standalone `I` without space, plus a player-name-untouched test.
 
-Must NOT fire on legitimate body content (`lol`, `I`, names ending in `l`/`I`). Negative test cases mandatory.
+**Original heuristic in the doc was buggy** (the "second-to-last char in `[a-z!?.]`" formulation would have corrupted `cool`/`lol`). Replaced with the whitelist approach. False negatives (uncorrected misreads) accepted to keep false-positive risk near zero.
 
-**First step:** Add `_OCR_PAIR_MAP = {"ÅA": "^^"}` applied via `.replace` after `_OCR_CHAR_MAP`. Add `_fix_body_trailing_punct(text)` helper for end-of-body corrections, only invoked from `normalize_finished_message` on completed records (not raw lines).
+**What was dropped on review:** the originally-spec'd `_OCR_PAIR_MAP = {"ÅA": "^^"}` for chat-font caret-pair drift. It only fired on 2 of 32 regression fixtures (ex_25, ex_27 — both featuring the same player's emoticon style) and the precedent of accumulating per-glyph OCR fixes in a hardcoded pair map is worse than the body-OCR fidelity gain. The trailing-`!` whitelist has the same brittleness shape; flagged as on-probation in this entry. Don't extend either map without an explicit cross-fixture justification.
 
-**What it fixes when done:** ex_27/28 body-text reads cleanly; ex_23/24 still fail until #1 lands too. ex_25 still fails on the line-reconstruction split (#4).
+**What it fixed:** see Cumulative projection above. Body-text deltas land in 4 of 5 fixtures; the regression tests still fail on independent issues (#10 speaker recovery, #4 line-reconstruction split, #12 player-name drift) and on the dropped caret-pair drift in ex_25 / ex_27.
 
 ---
 

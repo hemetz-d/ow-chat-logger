@@ -17,7 +17,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-30 | Improve team-chat color masking for blue-on-blue scenarios | structural | 🔴 `open` | — |
 | T-46 | Broaden hero detection: capture whisper and switch-announcement lines | structural | 🔴 `open` | — |
 | T-47 | example_17: identify why warning text still merges with `gg` despite T-27 / T-28 | structural | 🔴 `open` | — |
-| T-48 | Extend OCR character corrections: `^^`→`ÅA` and end-of-body `!`→`l`/`I` | structural | 🔴 `open` | — |
+| T-48 | Extend OCR character corrections: end-of-body `!`→`l`/`I` (caret-pair `^^`→`ÅA` dropped on review — see priorities doc) | structural | 🟢 `done` | 2026-05-08 |
 | T-49 | Lower or scale `min_mask_nonzero_pixels_for_ocr` so short bodies (`gg`, `=)`, `free`) survive | structural | 🔴 `open` | — |
 | T-50 | Add `^You endorsed ` and `^Music selected is ` to `SYSTEM_PATTERNS` | smell | 🟢 `done` | 2026-05-03 |
 | T-51 | Recover speaker on missing-prefix continuation across speakers (ex_05/13/23/24/27) | structural | 🔴 `open` | — |
@@ -147,33 +147,6 @@ So T-27 + T-28 both work as designed; the per-line system detection is sound; **
 **Test surface:** `tests/test_regression_screenshots.py::test_screenshot_matches_expected[example_17]` is the single integration target. Add a unit test in `tests/test_parser.py` for the substring-scrub case if that path is taken.
 
 **Related:** Closes the live bug noted in `KNOWN_FAILURES.md` ex_17 entry. T-27 and T-28 both stay `done` — they did what they said they would, just not enough on their own for this particular fixture.
-
----
-
-### T-48 · Extend OCR character corrections: `^^`→`ÅA` and end-of-body `!`→`l`/`I`
-- **Severity:** structural
-- **State:** 🔴 `open`
-- **File:** `src/ow_chat_logger/parser.py` (`_OCR_CHAR_MAP` / `normalize`), new body-only correction map, `tests/test_parser.py`
-- **Completed:** —
-
-Three new OCR drift classes surfaced in the 2026-05-03 `--run-ocr` pass that the existing single-character `_OCR_CHAR_MAP` does not cover:
-
-1. **Caret pair `^^` → `ÅA`** — fired on ex_25 (`you^^` → `youÅA`) and ex_27 (`okay^^` → `okayÅA`). `^^` is a common laugh/ack emoticon in chat; the misread is consistent (always `ÅA`, not random). Looks like a font-glyph collision specific to chat font rendering.
-2. **End-of-body `!` → `l`** — ex_27 (`thank you!` → `thank youl`).
-3. **End-of-body `!` → `I`** — ex_28 (`its to much !` → `its to much I`).
-
-The existing `_OCR_CHAR_MAP` is a single-character map applied unconditionally via `text.translate(...)` to every line. Extending it naively breaks legitimate content:
-- A blanket `Å` → `^` would corrupt names like `MåmadøraLuxi` (ex_19).
-- A blanket `l` → `!` or `I` → `!` would corrupt the player-name closing-bracket fix that T-15 / T-16 already depend on, and would mangle words like `lol` and `I`.
-
-**Fix direction:** Two-tier map.
-- (a) **Pair-substitution map** for unambiguous multi-char drifts that only make sense as their corrected form: `ÅA` → `^^` (the inverse direction of the misread, applied as a string `.replace`, not a `translate` map). Add as a new `_OCR_PAIR_MAP` dict run after the existing `_OCR_CHAR_MAP`. Pairs are anchored — full-string match — to avoid corrupting names that incidentally contain `ÅA`.
-- (b) **End-of-body trailing-character correction** for `!`: if a chat-body line ends in `l` or `I` and the second-to-last character is one of `[a-z!?.]` (suggests a sentence-ending punctuation context, not a word like `okayI`), rewrite the trailing `l`/`I` to `!`. Apply this **only** to the message body, never to player names. Mirrors the spirit of `ocr_fix_closing_bracket` but for body-trailing punctuation.
-- (c) Both rules require a regression test that proves they don't fire on legitimate content (`lol`, `I`, `cool`, names ending in `l`/`I`).
-
-**Test surface:** unit cases in `tests/test_parser.py` for each correction (positive and negative); ex_25, ex_27, ex_28, ex_31 are the integration targets that should improve. Verify ex_19's `MåmadøraLuxi` does not regress.
-
-**Related:** Same family as T-26 (OCR character-pair ambiguity, done). Out of scope: a corpus-based spell correction pass — keep this targeted at observed glyph collisions.
 
 ---
 
