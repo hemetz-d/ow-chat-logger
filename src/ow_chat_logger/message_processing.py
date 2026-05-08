@@ -10,6 +10,59 @@ from ow_chat_logger.hero_roster import canonicalize_hero_name
 
 REPORT_SUFFIX_RE = re.compile(r"\s*\[\s*report\s*\]\s*$", re.IGNORECASE)
 
+# T-48: chat interjections where a trailing `l` is almost certainly an OCR
+# misread of `!`. Lowercased; matched against the last word of the body.
+# Conservative whitelist — false negatives are accepted to avoid corrupting
+# real English words ending in `l` (e.g. `cool`, `lol`, `kill`, `Daniel`).
+_BODY_BANG_INTERJECTIONS = frozenset(
+    {
+        "epic",
+        "you",  # appears in "thank you!"
+        "nice",
+        "good",
+        "great",
+        "awesome",
+        "amazing",
+        "wow",
+        "sweet",
+        "thanks",
+        "ez",
+        "wp",
+        "gg",
+        "noice",
+        "sick",
+        "insane",
+        "cracked",
+        "yo",
+    }
+)
+
+_BODY_TRAILING_L_RE = re.compile(r"([A-Za-z]+)l\Z")
+_BODY_TRAILING_I_AFTER_SPACE_RE = re.compile(r"\s+I\Z")
+
+
+def _fix_body_trailing_punct(body: str) -> str:
+    """Correct end-of-body OCR misreads of `!` (read as `l` or `I`).
+
+    Two narrow rules, applied only to chat message bodies:
+    1. body ends in ``<word>l`` where ``<word>`` is in the chat-interjection
+       whitelist (`epic`, `you`, etc.) → rewrite trailing `l` as `!`.
+    2. body ends in standalone capital `I` preceded by whitespace → rewrite
+       to `!`. Risk: corrupts uncommon "...am I", "...was I" endings, but
+       trailing-`I`-without-punctuation is rare in OW chat.
+    """
+    if not body or len(body) < 2:
+        return body
+
+    if _BODY_TRAILING_I_AFTER_SPACE_RE.search(body):
+        return body[:-1] + "!"
+
+    match = _BODY_TRAILING_L_RE.search(body)
+    if match and match.group(1).lower() in _BODY_BANG_INTERJECTIONS:
+        return body[:-1] + "!"
+
+    return body
+
 
 def normalize_finished_message(finished, chat_type):
     """Normalize one completed message and apply app-level filtering rules."""
@@ -31,6 +84,8 @@ def normalize_finished_message(finished, chat_type):
 
     if player.lower() in IGNORED_SENDERS:
         return None
+
+    msg = _fix_body_trailing_punct(msg)
 
     if category == "standard":
         if not msg or msg.isdigit():

@@ -1,6 +1,6 @@
 # Known regression test failures
 
-Last updated: 2026-05-03. Run with `pytest --run-ocr tests/test_regression_screenshots.py`.
+Last updated: 2026-05-08 (post-T-48). Run with `pytest --run-ocr tests/test_regression_screenshots.py`.
 
 Most failures here are **pre-existing** — they were present before the T-26 normalization work and are unrelated to it. Entries for example_25–31 are newly added fixtures that exercise hero-info patterns the parser does not yet support (see T-46) and chat panels with non-default backgrounds (lobby / main menu).
 
@@ -96,50 +96,50 @@ Most failures here are **pre-existing** — they were present before the T-26 no
 ### example_23 - two consecutive all-chat messages merged into one
 - **Channel:** all_lines
 - **Expected:** `[Power]: this is overwatch goodbye`, `[A7X]: epic!`
-- **Actual (`--run-ocr`, 2026-05-03):** single record `[Power]: this is overwatch goodbye epicl`
-- **Actual (post #1, 2026-05-03):** `[Power]: this is overwatch goodbye`, `[unknown]: epicl` — boundary detection now splits correctly after the anchor-count floor was lowered (1) and the body_start_range gate was relaxed for single-anchor channels. Remaining diffs: speaker recovery (`[unknown]`→`[A7X]`) and end-of-body drift (`epicl`→`epic!`).
-- **Root cause (boundary now resolved):** Two remaining classes:
-  1. **Speaker recovery missing** — T-51 phase 2 / priority #10.
-  2. **End-of-body `!`→`l` drift** — T-48 / priority #3.
-- **Note on the original premise:** The pre-#1 entry described the merge bug (`[Power]: ... epicl` as one record). #1 (anchor-count floor + body_start_range relaxation for single-anchor channels) resolved that root cause. The remaining failures are the two listed above; the merge regime is gone.
+- **Actual (post #3, 2026-05-08):** `[Power]: this is overwatch goodbye`, `[unknown]: epic!` — body OCR drift fixed (`epicl`→`epic!`). Only remaining diff is speaker recovery (`[unknown]`→`[A7X]`).
+- **Root cause (single remaining class):** Speaker recovery missing — T-51 phase 2 / priority #10.
+- **Resolution history:**
+  - #1 (T-51 phase 1, 2026-05-03): boundary detection (anchor-count floor + body_start_range relaxation for single-anchor channels) split the merged record correctly. Pre-#1 actual was a single merged record `[Power]: this is overwatch goodbye epicl`.
+  - #3 (T-48, 2026-05-08): end-of-body `!`→`l` drift fixed via the chat-interjection whitelist; `[unknown]: epicl` is now `[unknown]: epic!`.
 
 ### example_24 - same as example_23, separate capture
 - **Channel:** all_lines
-- **Expected / Actual (post #1):** identical to example_23 above. Now produces `[Power]: this is overwatch goodbye`, `[unknown]: epicl`. Remaining failures are speaker recovery (#10) and end-of-body drift (#3).
+- **Expected / Actual (post #3):** identical to example_23 above. Now produces `[Power]: this is overwatch goodbye`, `[unknown]: epic!`. Only remaining failure is speaker recovery (#10).
 - **Note:** Kept as a second fixture so a future fix can be validated against more than one capture of the bug.
 - **Hidden hero info for T-46:** team channel has `bmf→Moira`, `Zacama→Anran`, `GodOfTheGapped→Domina` whisper records.
 
 ### example_25 - lobby chat: line-reconstruction split + caret OCR drift
 - **Channel:** team_lines + all_lines (the lobby renders different speakers in different colour bands; same pattern as ex_26 / ex_28)
 - **Expected:** `[A7X]: gg bot mimi`, `[MimiChan]: you^^` (team) + `[Aerotex]: free` (all)
-- **Actual (`--analyze`, 2026-05-03):** `[A7X]: gg`, `[MimiChan]: you�A` (team) + `[Aerotex]: free` (all, correctly captured)
-- **Root cause:** Two real issues on the team channel; the all channel passes.
-  1. **Line-reconstruction split** (NOT right-edge truncation): OCR returns `bot`, `mimi`, and `[A7Xl: gg` as separate boxes whose y-coordinates span the full `y_merge_threshold=14` window (mimi @ y=1348, bot @ y=1357, prefix @ y=1362). `reconstruct_lines` splits them into two raw lines: `'bot mimi'` (no prefix → falls through as continuation onto an empty buffer → discarded) and `'[A7Xl: gg'` (parses correctly to `[A7X]: gg` via T-15/T-16's missing-closing-bracket recovery). The trailing `bot mimi` is silently dropped. **Pre-`--analyze` triage flagged this as right-edge clip (T-52); that diagnosis was wrong.** No existing task covers this within-line reconstruction split — boundary is exactly at the threshold so even a small bump (15 or 16) would likely fix this fixture, but tightening risks merging genuinely separate lines elsewhere.
-  2. **Caret-pair misread** `you^^` → `you�A` (the `Å` rendered with replacement char in some encodings). Same as ex_27. T-48 covers this.
-- **Note:** Pre-`--analyze` triage incorrectly listed `[Aerotex]: free` as missing and misclassified the truncation. Both errors were artefacts of the regression test's first-channel-fail short-circuit hiding the all_lines content. Expected.json corrected on 2026-05-03 (moved Aerotex to all_lines, dropped the body-truncation framing). Endorsement lines (`Endorsement Received!`, `You endorsed X!`) are correctly filtered today; T-50 anchors the system patterns explicitly anyway.
-- **Related tasks:** T-48 (caret correction). No task covers the line-reconstruction split — kept here as documented limitation.
+- **Actual (`pytest --run-ocr`, 2026-05-08):** `[unknown]: bot mimi`, `[A7X]: gg`, `[MimiChan]: youÅA` (team) + `[Aerotex]: free` (all)
+- **Root cause (two remaining classes):**
+  1. **Line-reconstruction split** (NOT right-edge truncation). OCR returns `bot`, `mimi`, and `[A7Xl: gg` as separate boxes whose y-coordinates span the full `y_merge_threshold=14` window (mimi @ y=1348, bot @ y=1357, prefix @ y=1362). `reconstruct_lines` splits them into two raw lines: `'bot mimi'` (no prefix → emitted as `[unknown]: bot mimi` once the missing-prefix heuristic fires) and `'[A7Xl: gg'` (parses correctly to `[A7X]: gg` via T-15/T-16's missing-closing-bracket recovery). Priority #4 covers this.
+  2. **Caret-pair misread** `you^^` → `youÅA`. A `_OCR_PAIR_MAP` fix was prototyped under T-48 and then dropped — too narrow (only fires on this player's emoticon style across 2 fixtures) and the precedent of accumulating per-glyph OCR maps is worse than the body-OCR fidelity gain. Documented as a known limitation; revisit once a corpus-based or character-confidence approach is on the table.
+- **Note:** Pre-`--analyze` triage incorrectly listed `[Aerotex]: free` as missing and misclassified the truncation. Both errors were artefacts of the regression test's first-channel-fail short-circuit hiding the all_lines content. Expected.json corrected on 2026-05-03. Endorsement lines (`Endorsement Received!`, `You endorsed X!`) are correctly filtered today; T-50 anchors the system patterns explicitly anyway.
+- **Related tasks:** Priority #4 (line-reconstruction split). No active task on the caret-pair drift.
 
-### example_27 - lobby chat: multiple OCR drifts + speaker recovery (boundary now stable)
+### example_27 - lobby chat: speaker recovery + player-name + caret drift (trailing-`!` fixed)
 - **Channel:** team_lines (lobby)
 - **Expected:** `[A7X]: bot mimi what is too much?`, `[MimiChan]: why bot .....`, `[A7X]: for fun!`, `[MimiChan]: okay^^`, `[A7X]: thank you!`
-- **Actual (post #1, 2026-05-03):** 5 records — `[A7X]: bot mimi what is too much?`, `[MimiOhan]: why bot`, `[unknown]: for fun!`, `[MimiChan]: okay�A`, `[A7X]: thank youl`. Boundary detection now stable across runs (was non-deterministic pre-#1).
-- **Root cause (four remaining issues):**
+- **Actual (post #3, 2026-05-08):** 5 records — `[A7X]: bot mimi what is too much?`, `[MimiOhan]: why bot`, `[unknown]: for fun!`, `[MimiChan]: okayÅA`, `[A7X]: thank you!`.
+- **Root cause (three remaining issues):**
   1. **Speaker recovery missing** — `[unknown]: for fun!` should be `[A7X]: for fun!`. Priority #10.
   2. **Player-name `C` → `O`** drift on line 2 only (`MimiChan` → `MimiOhan`) — same C/O glyph ambiguity as ex_04. The same `MimiChan` reads correctly on line 4 — drift is per-occurrence, not per-fixture. T-17 deferred / priority #12.
-  3. **Caret-pair misread** `^^` → `ÅA` (rendered as `�A` in the report due to encoding) — same as ex_25 issue 3. Mask captures the carets fine; OCR fails to recognize the glyph pair. Priority #3 / T-48.
-  4. **Message-body `!` → `l`** on the last line (`thank you!` → `thank youl`) — same artefact class as T-15 / T-16, in body content. Priority #3 / T-48.
+  3. **Caret-pair misread** `okay^^` → `okayÅA`. Same shape as ex_25 issue 2; the `_OCR_PAIR_MAP` fix was prototyped under T-48 and dropped on review (per-glyph hardcoded fixes don't scale). No active task.
+- **Resolution history:**
+  - #1 (T-51 phase 1, 2026-05-03): boundary detection stable across runs (was non-deterministic pre-#1, e.g. `[MimiOhan]: why bot for fun!` as one merged record).
+  - #3 (T-48, 2026-05-08): trailing-`l` `thank youl`→`thank you!` fixed via the chat-interjection whitelist.
 - **`--analyze` corroboration:** trailing `.....` on line 2 is lost in raw OCR (sub-confidence dots, not in any OCR box). The `A7X switched to Genii (was Ana)` switch line carries a `Genji` → `Genii` OCR drift — same hero-canonicalization concern noted in T-46.
-- **Note:** Pre-#1, this entry recorded the merge regime (`[MimiOhan]: why bot for fun!` as one record). After #1, boundary detection is stable; the merge regime is gone.
 
-### example_28 - lobby chat: OCR drifts on MimiChan line
+### example_28 - lobby chat: player-name drift (body OCR now fixed)
 - **Channel:** team_lines (lobby) + all_lines (Aerotex is genuinely all-chat by colour)
 - **Expected:** `[MimiChan]: 3 healer ? its to much !` (team) + `[Aerotex]: dude need cass ult for 1 supp` (all)
-- **Actual (`--analyze` + `--run-ocr`, 2026-05-03):** `[MimiOhan]: 3 healer ? its to much I` (team) + `[Aerotex]: dude need cass ult for 1 supp` (all, correctly captured)
-- **Root cause:** Two OCR drifts on the team line; no mask gaps, no missing lines, no channel mix-up.
-  1. **`MimiChan` → `MimiOhan`** — C/O drift inside player name; same class as ex_27 and ex_04. Player-name spell-correction territory; remains under T-17 (deferred) as a corpus-based-name-check requirement.
-  2. **`!` → `I`** at end of body — same trailing-`!` artefact class as ex_27 (which read `l` instead of `I` for the same character). T-48 covers the end-of-body trailing-`!` correction.
+- **Actual (post #3, 2026-05-08):** `[MimiOhan]: 3 healer ? its to much !` (team) + `[Aerotex]: dude need cass ult for 1 supp` (all, correctly captured)
+- **Root cause (single remaining issue):** **`MimiChan` → `MimiOhan`** — C/O drift inside player name; same class as ex_27 and ex_04. Player-name spell-correction territory; remains under T-17 (deferred) as a corpus-based-name-check requirement / priority #12.
+- **Resolution history:**
+  - #3 (T-48, 2026-05-08): trailing `I`-after-space body misread fixed via the standalone-`I` rule; `its to much I` is now `its to much !`.
 - **Note:** The pre-`--analyze` triage in this entry incorrectly listed `[Aerotex]: dude need cass ult for 1 supp` as missing. The line is genuinely all-chat (orange/red HSV band) and is captured correctly today; the original expected.json wrongly placed it in `team_lines`, and the regression test masked the all_lines mismatch because `pytest.fail` on the team channel short-circuits the all-channel assertion. Expected.json corrected on 2026-05-03 to reflect the true channel.
-- **Related tasks:** T-48 (end-of-body `!`→`I` correction). T-46 documents the wasted hero info on the same screenshot — three hero-bearing lines are correctly filtered (the switch and two whispers, including the nested-parens whisper that is T-46's hardest single-frame test).
+- **Related tasks:** Priority #12 (player-name corpus / spell-correction). T-46 documents the wasted hero info on the same screenshot — three hero-bearing lines are correctly filtered (the switch and two whispers, including the nested-parens whisper that is T-46's hardest single-frame test).
 
 ### example_31 - main-menu chat: OCR engine drops symbol-only short body
 - **Channel:** team_lines (main-menu group chat)

@@ -1,8 +1,11 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from ow_chat_logger.buffer import MessageBuffer
 from ow_chat_logger.hero_roster import canonicalize_hero_name
 from ow_chat_logger.message_processing import (
+    _fix_body_trailing_punct,
     normalize_finished_message,
     collect_screenshot_messages,
     process_finished,
@@ -352,6 +355,91 @@ def test_process_finished_dedups_canonicalized_hero_variants():
 
     hero_dedup.is_new.assert_called_once_with("MiniNinja|D.Va")
     hero_logger.log.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "body,expected",
+    [
+        # T-48 / priority #3: trailing-`l` misread of `!` after a known
+        # chat interjection (regression ex_23, ex_24, ex_27).
+        ("epicl", "epic!"),
+        ("thank youl", "thank you!"),
+        ("nicel", "nice!"),
+        ("ggl", "gg!"),
+        ("its just amazingl", "its just amazing!"),
+        # T-48: standalone trailing `I` after whitespace (regression ex_28).
+        ("its to much I", "its to much !"),
+    ],
+)
+def test_fix_body_trailing_punct_corrects_misread_bang(body, expected):
+    """T-48 / priority #3 positive: misread `!` at end of body is restored."""
+    assert _fix_body_trailing_punct(body) == expected
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # Common English words ending in `l` must not be corrupted.
+        "cool",
+        "lol",
+        "kill",
+        "well",
+        "fall",
+        "still",
+        "Daniel",
+        "Nathaniel",
+        # Two-character `gl` (good-luck) is not on the interjection list and
+        # is short enough to look like noise — leave alone.
+        "gl",
+        # Standalone `I` without preceding whitespace is the pronoun, not a
+        # misread (e.g. a body that is exactly `I`).
+        "I",
+        # Body ending in legitimate punctuation must be untouched.
+        "epic!",
+        "thank you!",
+        "much!",
+        # Empty / very short bodies untouched.
+        "",
+        "a",
+    ],
+)
+def test_fix_body_trailing_punct_leaves_legitimate_endings_alone(body):
+    """T-48 / priority #3 negative: real English words ending in `l`/`I` and
+    bodies that already end in `!` must pass through unchanged."""
+    assert _fix_body_trailing_punct(body) == body
+
+
+def test_normalize_finished_message_applies_body_trailing_correction():
+    """T-48: `_fix_body_trailing_punct` is wired through `normalize_finished_message`
+    so live frame processing applies the correction once per record."""
+    actual = normalize_finished_message(
+        {
+            "category": "standard",
+            "player": "A7X",
+            "hero": "",
+            "msg": "thank youl",
+        },
+        "team",
+    )
+
+    assert actual["msg"] == "thank you!"
+
+
+def test_normalize_finished_message_does_not_corrupt_player_name_ending_in_l():
+    """T-48: the body-trailing-`l` correction must NOT touch player names —
+    `Daniel`, `Nathaniel`, etc. legitimately end in `l`."""
+    actual = normalize_finished_message(
+        {
+            "category": "standard",
+            "player": "Daniel",
+            "hero": "",
+            "msg": "hello",
+        },
+        "team",
+    )
+
+    assert actual["player"] == "Daniel"
+    assert actual["msg"] == "hello"
 
 
 def test_collect_screenshot_messages_canonicalizes_hero_name_when_enabled():
