@@ -19,7 +19,7 @@ Risk scale: **LOW** (well-bounded, easy to revert) · **MED** (could regress unr
 | 2 | ~~System patterns: `^You endorsed `, `^Music selected is `~~ ✅ **DONE 2026-05-03** | XS | LOW | (preventive) | T-50 |
 | **Tier 2 — Small focused fixes** ||||||
 | 3 | OCR character corrections: end-of-body `!`→`l`/`I` (caret-pair `ÅA`→`^^` dropped — see #3 entry) | S | LOW | ex_23, _24, _27, _28 (trailing-`!` drift fixed; tests still fail on speaker recovery / player-name drift) | T-48 (partial done 2026-05-08) |
-| 4 | `y_merge_threshold` tuning + within-line reconstruction | S | MED | ex_25 (split) | none |
+| 4 | ~~`y_merge_threshold` tuning (14→16, option (a))~~ ✅ **DONE 2026-05-14** | S | MED | ex_25 line-reconstruction split fixed (test still fails on caret-pair drift, #3 known limitation) | T-55 |
 | 5 | Lower `min_mask_nonzero_pixels_for_ocr` (+ post-OCR confidence) | S | MED | enables short-body detection (paired with #13) | T-49 |
 | 6 | ex_18 right-edge mask gap investigation | S | LOW | ex_18, possibly ex_25 partial | T-30 (re-scoped) |
 | **Tier 3 — Multi-file work** ||||||
@@ -100,17 +100,18 @@ ex_25's `You endorsed FlameHawk!` and the `Music selected is Kicks (was Any)` li
 
 ---
 
-### #4 · `y_merge_threshold` tuning + within-line reconstruction
-**Effort:** S · **Risk:** MED · **Fixtures fixed:** ex_25
+### #4 · `y_merge_threshold` 14→16 — landed 2026-05-14
+**Effort:** S · **Risk:** MED · **Fixtures fixed:** ex_25 line-reconstruction split (the test still fails on the caret-pair drift, #3 documented known limitation)
 
-ex_25's `[A7X]: gg bot mimi` splits because OCR boxes for `mimi` (y=1348), `bot` (y=1357), and `[A7Xl:` (y=1362) span exactly 14 px — the current `y_merge_threshold`. The boundary case forces a split into `'bot mimi'` (orphaned continuation, discarded) and `'[A7Xl: gg'` (parses as `[A7X]: gg`).
+**What landed:** option (a) — `y_merge_threshold: 14 → 16` in the `windows_default` OCR profile, `_DEFAULT_CONFIG`, and `config_template.json`. Easyocr (18) and tesseract (16) profiles were already at or above 16 and were left alone.
 
-**Fix options (pick one — DO NOT bundle):**
-- **(a)** Bump `y_merge_threshold: 14` → `16`. Trivial, fixes ex_25, but risks merging unrelated lines on tightly-packed scrollbacks.
-- **(b)** Make threshold proportional to detected line height (currently constant). Robust but more work.
-- **(c)** Add hysteresis: boxes within 14 px always merge; 14-20 px merge only if x-spans overlap or are adjacent (no significant horizontal gap). Best correctness but most complex.
+**Verification:** full regression suite (`pytest --run-ocr tests/test_regression_screenshots.py`) and unit tests run on 2026-05-14:
+- ex_25 team_lines now emits `[A7X]: gg bot mimi` correctly (was split into `[unknown]: bot mimi` + `[A7X]: gg` pre-fix); the test still fails on the documented caret-pair `you^^` → `you�A` drift, which is a permanent #3 known limitation not in scope here.
+- Overall failing count unchanged at **16 / 32** — no fixture flipped from passing to failing.
+- Spot-checked tightly-packed scrollbacks (ex_05, ex_13, ex_23, ex_27) — all four kept identical failure shapes vs. their KNOWN_FAILURES baselines, so the wider merge window did not cause unrelated lines to merge.
+- All 119 unit tests pass.
 
-**First step:** Run all 32 fixtures with `y_merge_threshold=16` and diff the `--analyze` output against current state. If no regressions, ship (a). Otherwise pursue (c).
+**Options (b) and (c) were not needed** — (a)'s diff is clean enough that the more complex hysteresis design is not justified for now. Revisit if a future fixture surfaces a tight-scrollback merge regression.
 
 ---
 

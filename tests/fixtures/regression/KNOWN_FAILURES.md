@@ -1,6 +1,6 @@
 # Known regression test failures
 
-Last updated: 2026-05-08 (post-T-48). Run with `pytest --run-ocr tests/test_regression_screenshots.py`.
+Last updated: 2026-05-14 (post-T-55 `y_merge_threshold` 14→16). Run with `pytest --run-ocr tests/test_regression_screenshots.py`.
 
 Most failures here are **pre-existing** — they were present before the T-26 normalization work and are unrelated to it. Entries for example_25–31 are newly added fixtures that exercise hero-info patterns the parser does not yet support (see T-46) and chat panels with non-default backgrounds (lobby / main menu).
 
@@ -108,15 +108,15 @@ Most failures here are **pre-existing** — they were present before the T-26 no
 - **Note:** Kept as a second fixture so a future fix can be validated against more than one capture of the bug.
 - **Hidden hero info for T-46:** team channel has `bmf→Moira`, `Zacama→Anran`, `GodOfTheGapped→Domina` whisper records.
 
-### example_25 - lobby chat: line-reconstruction split + caret OCR drift
+### example_25 - lobby chat: caret OCR drift (line-reconstruction split fixed)
 - **Channel:** team_lines + all_lines (the lobby renders different speakers in different colour bands; same pattern as ex_26 / ex_28)
 - **Expected:** `[A7X]: gg bot mimi`, `[MimiChan]: you^^` (team) + `[Aerotex]: free` (all)
-- **Actual (`pytest --run-ocr`, 2026-05-08):** `[unknown]: bot mimi`, `[A7X]: gg`, `[MimiChan]: youÅA` (team) + `[Aerotex]: free` (all)
-- **Root cause (two remaining classes):**
-  1. **Line-reconstruction split** (NOT right-edge truncation). OCR returns `bot`, `mimi`, and `[A7Xl: gg` as separate boxes whose y-coordinates span the full `y_merge_threshold=14` window (mimi @ y=1348, bot @ y=1357, prefix @ y=1362). `reconstruct_lines` splits them into two raw lines: `'bot mimi'` (no prefix → emitted as `[unknown]: bot mimi` once the missing-prefix heuristic fires) and `'[A7Xl: gg'` (parses correctly to `[A7X]: gg` via T-15/T-16's missing-closing-bracket recovery). Priority #4 covers this.
-  2. **Caret-pair misread** `you^^` → `youÅA`. A `_OCR_PAIR_MAP` fix was prototyped under T-48 and then dropped — too narrow (only fires on this player's emoticon style across 2 fixtures) and the precedent of accumulating per-glyph OCR maps is worse than the body-OCR fidelity gain. Documented as a known limitation; revisit once a corpus-based or character-confidence approach is on the table.
+- **Actual (post #4, 2026-05-14):** `[A7X]: gg bot mimi`, `[MimiChan]: you�A` (team) + `[Aerotex]: free` (all). Only remaining diff is the caret-pair body drift `you^^` → `you�A`.
+- **Root cause (single remaining class):** **Caret-pair misread** `you^^` → `you�A`. A `_OCR_PAIR_MAP` fix was prototyped under T-48 and then dropped — too narrow (only fires on this player's emoticon style across 2 fixtures) and the precedent of accumulating per-glyph OCR maps is worse than the body-OCR fidelity gain. Documented as a known limitation; revisit once a corpus-based or character-confidence approach is on the table.
+- **Resolution history:**
+  - #4 (T-55, 2026-05-14): `y_merge_threshold` bumped 14→16 on the `windows_default` profile. OCR previously returned `bot` (y=1348), `mimi` (y=1357), and `[A7Xl: gg` (y=1362) as separate boxes whose span equalled the merge threshold — `reconstruct_lines` split them into two raw lines: `'bot mimi'` (emitted as `[unknown]: bot mimi`) and `'[A7Xl: gg'`. With the widened window all three boxes chain-merge into a single raw line that parses as `[A7X]: gg bot mimi`.
 - **Note:** Pre-`--analyze` triage incorrectly listed `[Aerotex]: free` as missing and misclassified the truncation. Both errors were artefacts of the regression test's first-channel-fail short-circuit hiding the all_lines content. Expected.json corrected on 2026-05-03. Endorsement lines (`Endorsement Received!`, `You endorsed X!`) are correctly filtered today; T-50 anchors the system patterns explicitly anyway.
-- **Related tasks:** Priority #4 (line-reconstruction split). No active task on the caret-pair drift.
+- **Related tasks:** No active task on the caret-pair drift (#3 known limitation).
 
 ### example_27 - lobby chat: speaker recovery + player-name + caret drift (trailing-`!` fixed)
 - **Channel:** team_lines (lobby)

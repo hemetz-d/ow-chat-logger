@@ -84,7 +84,7 @@ def _builtin_ocr_profiles() -> dict[str, dict[str, Any]]:
             "pipeline": {
                 "scale_factor": 4,
                 "high_quality_ocr": True,
-                "y_merge_threshold": 14,
+                "y_merge_threshold": 16,
                 "max_continuation_y_gap_factor": 2.0,
                 "missing_prefix_min_anchor_lines": 1,
                 "missing_prefix_body_start_tolerance": 20.0,
@@ -222,7 +222,7 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     "screen_region": (80, 400, 400, 600),
     "scale_factor": 4,
     "high_quality_ocr": True,
-    "y_merge_threshold": 14,
+    "y_merge_threshold": 16,
     "max_continuation_y_gap_factor": 2.0,
     "missing_prefix_min_anchor_lines": 1,
     "missing_prefix_body_start_tolerance": 20.0,
