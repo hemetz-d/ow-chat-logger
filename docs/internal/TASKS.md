@@ -24,6 +24,7 @@ State: 🔴 `open` | 🟡 `in-progress` | 🔵 `review` | 🟢 `done` | ⚫ `def
 | T-52 | Right-edge body truncation on long messages (ex_18, ex_25) | structural | 🔴 `open` | — |
 | T-53 | example_22: all-chat mask leaks team-chat content; audit per-channel HSV bands | structural | 🔴 `open` | — |
 | T-54 | Reject non-chat UI panel bleed into team mask (ex_14 `Odin's Fav Child`) | structural | 🔴 `open` | — |
+| T-55 | Bump `y_merge_threshold` 14→16 on the `windows_default` OCR profile (ex_25 line-reconstruction split) | structural | 🟢 `done` | 2026-05-14 |
 | T-32 | Stale "Related tasks" references in `KNOWN_FAILURES.md` | smell | 🟢 `done` | 2026-05-03 |
 | T-33 | Undocumented regression failures for example_22/23/24 | smell | 🟢 `done` | 2026-05-03 |
 | T-34 | Verify GUI chat-color settings propagate to all detection paths | structural | 🔵 `review` | — |
