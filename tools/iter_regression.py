@@ -48,8 +48,12 @@ def _norm(s: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--only", nargs="*", default=None,
-                        help="Only run the listed fixture stems (e.g. example_18).")
+    parser.add_argument(
+        "--only",
+        nargs="*",
+        default=None,
+        help="Only run the listed fixture stems (e.g. example_18).",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -95,9 +99,7 @@ def main() -> int:
         status = "PASS" if passed else "FAIL"
         print(f"{status}  {png.stem}")
         if not passed or args.verbose:
-            for ch_name, want, got in [
-                ("team", want_team, got_team), ("all", want_all, got_all)
-            ]:
+            for ch_name, want, got in [("team", want_team, got_team), ("all", want_all, got_all)]:
                 if want != got:
                     miss = [x for x in want if x not in got]
                     extra = [x for x in got if x not in want]

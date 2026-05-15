@@ -43,9 +43,7 @@ def _norm_line(s: str) -> str:
     return re.sub(r"\s+", " ", s.strip())
 
 
-def _diff_lines(
-    actual: list[str], expected: list[str]
-) -> tuple[list[str], list[str], list[str]]:
+def _diff_lines(actual: list[str], expected: list[str]) -> tuple[list[str], list[str], list[str]]:
     norm_actual = [_norm_line(line) for line in actual]
     norm_expected = [_norm_line(line) for line in expected]
     missing = [line for line in norm_expected if line not in norm_actual]
@@ -92,9 +90,7 @@ def _print_mask_stats(debug_data: dict[str, Any]) -> None:
         print(f"  {channel}: {nonzero:,} nonzero pixels (ocr_skipped={ocr_skipped})")
 
 
-def _print_channel_diff(
-    channel: str, actual: list[str], expected: list[str]
-) -> bool:
+def _print_channel_diff(channel: str, actual: list[str], expected: list[str]) -> bool:
     missing, unexpected, matched = _diff_lines(actual, expected)
     passed = not missing and not unexpected
     _print_header(f"{channel.upper()} CHANNEL - {'PASS' if passed else 'FAIL'}")
@@ -140,9 +136,7 @@ def _format_prefix_evidence(evidence: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _print_channel_trace(
-    channel: str, debug_data: dict[str, Any], show_prefix_gates: bool
-) -> None:
+def _print_channel_trace(channel: str, debug_data: dict[str, Any], show_prefix_gates: bool) -> None:
     raw_lines = (debug_data.get("raw_lines") or {}).get(channel) or []
     raw_ys = (debug_data.get("raw_line_ys") or {}).get(channel) or [None] * len(raw_lines)
     raw_evidence = (debug_data.get("raw_line_prefix_evidence") or {}).get(channel) or []
@@ -165,10 +159,7 @@ def _print_channel_trace(
         category = classification.get("category")
         details = ""
         if category in {"standard", "hero"}:
-            details = (
-                f" player={classification.get('player')!r}"
-                f" msg={classification.get('msg')!r}"
-            )
+            details = f" player={classification.get('player')!r} msg={classification.get('msg')!r}"
             if classification.get("ocr_fix_closing_bracket"):
                 details += " ocr_fix_closing_bracket=True"
         elif category == "continuation":
@@ -196,7 +187,9 @@ def _write_artifacts(
         cropped = debug_data.get("cropped_rgb_image")
         if cropped is not None:
             written = write_analysis_artifacts(cropped, debug_data, output_dir)
-            written.pop("report", None)  # write_analysis_artifacts lists this path but does not write it
+            written.pop(
+                "report", None
+            )  # write_analysis_artifacts lists this path but does not write it
             artifacts.update(written)
 
     report = {
@@ -220,7 +213,9 @@ def _write_artifacts(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("fixture", help="Fixture stem name, e.g. example_14")
     parser.add_argument(
         "--channel",
@@ -260,9 +255,7 @@ def main() -> int:
         return 2
 
     output_dir = (
-        Path(args.output_dir)
-        if args.output_dir
-        else REPO_ROOT / "tmp" / f"analyze_{fixture_stem}"
+        Path(args.output_dir) if args.output_dir else REPO_ROOT / "tmp" / f"analyze_{fixture_stem}"
     )
 
     expected = json.loads(expected_path.read_text(encoding="utf-8"))
@@ -301,9 +294,7 @@ def main() -> int:
     if not args.no_trace:
         channels = ("team", "all") if args.channel == "both" else (args.channel,)
         for channel in channels:
-            _print_channel_trace(
-                channel, debug_data, show_prefix_gates=not args.no_prefix_gates
-            )
+            _print_channel_trace(channel, debug_data, show_prefix_gates=not args.no_prefix_gates)
 
     artifacts = _write_artifacts(
         debug_data, actual, expected, output_dir, write_masks=not args.no_masks
