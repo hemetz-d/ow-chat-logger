@@ -85,6 +85,12 @@ SYSTEM_REGEX = re.compile("|".join(SYSTEM_PATTERNS), re.IGNORECASE)
 SYSTEM_MATCHER = AhoCorasickMatcher(SYSTEM_FRAGMENTS)
 
 
+def _strip_trailing_non_alnum(text):
+    while text and not text[-1].isalnum():
+        text = text[:-1]
+    return text
+
+
 def normalize(text):
     text = text.strip()
 
@@ -133,6 +139,8 @@ def classify_line(line):
         match = pattern.match(line)
         if match:
             player = match.group("player").strip().replace("|", "I")
+            if pattern is MISSING_CLOSING_BRACKET_PATTERN and line.startswith("["):
+                player = _strip_trailing_non_alnum(player)
             return {
                 "category": "standard",
                 "player": player,

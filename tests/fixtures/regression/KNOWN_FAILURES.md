@@ -1,8 +1,13 @@
 # Known regression test failures
 
-Last updated: 2026-05-14 (post-T-55 `y_merge_threshold` 14→16). Run with `pytest --run-ocr tests/test_regression_screenshots.py`.
+Last updated: 2026-05-14 (post body_start speaker-recovery + bracket-junk strip
+tuning session — see FINDINGS.md). Run with `pytest --run-ocr tests/test_regression_screenshots.py`.
 
 Most failures here are **pre-existing** — they were present before the T-26 normalization work and are unrelated to it. Entries for example_25–31 are newly added fixtures that exercise hero-info patterns the parser does not yet support (see T-46) and chat panels with non-default backgrounds (lobby / main menu).
+
+example_13 and example_17 used to live here; they now pass after the
+speaker-recovery (Attempt #4 in FINDINGS.md) and bracket-junk strip
+(Attempt #5) changes from 2026-05-14.
 
 ---
 
@@ -46,42 +51,43 @@ Most failures here are **pre-existing** — they were present before the T-26 no
 - **Root cause (`--analyze`, 2026-05-03):** team_mask is **2,290,286** nonzero pixels (the entire screen-region is essentially masked) but raw OCR is **completely empty**. Mask captures everything; text contours can't be distinguished from the blue background at this color/brightness combination. Same blue-on-blue saturation class as ex_09 / ex_14 / ex_22.
 - **Related task:** T-30 (team color masking quality — primary).
 
-### example_13 - speaker recovery missing (boundary now splits correctly)
-- **Channel:** team_lines (all_lines passes 100%)
-- **Expected two records:** `[A7X]: sup dawgs` and `[A7X]: xdd`
-- **Actual (post #1, 2026-05-03):** `[A7X]: sup dawgs`, `[unknown]: xdd` (boundary detection now stable; only speaker recovery `[unknown]`→`[A7X]` remains)
-- **Root cause:** Speaker recovery missing — T-51 phase 2 / priority #10.
-- **See also:** example_05 (same class).
-
-### example_14 - multi-line garbage bleed on two messages
+### example_14 - `[A7X]: i check on your mom more often` lost in raw OCR
 - **Channel:** team_lines
-- **Affected messages:**
-  - `[Omphalode]: speak better` → actual: `[Omphalode]: speak better o`
-  - `[Omphalode]: u 12?` → actual: `[Omphalode]: u 12? your mom mor o O[RDK/I Odin's Fav Child`
-  - `[A7X]: i check on your mom more often` → partially present in raw lines but lost in parsed output
-- **Root cause (`--analyze`, 2026-05-03):** team_mask is **1,185,282 nonzero pixels** (massive over-coverage). All-mask is empty. Three compounding issues:
-  1. **`[A7X]: i check on your mom more often` garbled to `'your mom mor o'`:** OCR detects a partial fragment with no prefix box. It falls through as `category=continuation` and merges onto the open Omphalode record. T-51 territory (missing-prefix recovery), but the fragment may be too damaged to recover the player even with the heuristic working.
-  2. **Stray `'o'` on raw line 3:** appended onto `[Omphalode]: speak better` → `[Omphalode]: speak better o`. Single-character mask artefact.
-  3. **`Odin's Fav Child` panel bleed:** the player-portrait panel's text appears in TEAM mask, not all mask — meaning the panel renders with hue components inside H 96-118 (likely a teal/cyan accent rather than pure pink). **T-54's original "reject pink hue" angle does NOT apply here** — the offending pixels are inside the team band. The fix needs to be **spatial exclusion** of the player-portrait region from the chat crop, not hue rejection. T-54 description has been updated to reflect this.
-- **Related tasks:** T-51 (continuation merge); T-54 (UI panel bleed — re-scoped to spatial exclusion); T-30 (broader mask-coverage tightening).
+- **Expected missing today (post 2026-05-14 tuning):** `[A7X]: i check on your mom more often`.
+- **Previous failure surface (resolved 2026-05-14):**
+  - `[Omphalode]: speak better o` (stray 'o' bleed) — fixed by buffer-level
+    drop of single-alphanumeric continuations (Attempt #2 in FINDINGS.md).
+  - `[Omphalode]: u 12? your mom mor o O[RDK/I Odin's Fav Child` (player-portrait
+    panel bleed chained onto an open Omphalode record) — fixed by tightening
+    `max_continuation_y_gap_factor` 2.0 → 1.5 (Attempt #3 in FINDINGS.md).
+    The bleed chain stepped ~1.8× median line-height per jump, just under the
+    old 2.0× ceiling; 1.5× breaks the chain at the first jump.
+- **Root cause of the remaining miss:** the team_mask is **1,185,282 nonzero
+  pixels** (massive over-coverage from a teal/cyan scene element). The
+  `[A7X]: i check on your mom more often` line lands inside this overlay
+  region; OCR returns only the fragment `'your mom mor o'` for it. That
+  fragment is too garbled to match the expected canonical message; even
+  recovering the player via the body_start anchor matcher (Attempt #4) would
+  not produce a body string that matches the expected one.
+- **Related tasks:** T-30 (mask quality on saturated scenes); T-54 (spatial
+  exclusion of player-portrait region from chat crop).
 
-### example_17 - player-name garble (warning bleed is non-deterministic)
-- **Channel:** all_lines
-- **Expected:** `[A7X]: gg`
-- **Actual (OCR-run-dependent — both observed):**
-  - `pytest --run-ocr` (2026-05-03): `[A7Xl•.]: gg Warning! You're voting to ban your teammate's preferred hero.` (warning bleeds in)
-  - `--analyze` (2026-05-03): `[A7Xl�.]: gg` (warning correctly filtered, no bleed)
-- **Root cause:** Two distinct issues, only one persistent.
-  1. **Player-name artefact (persistent):** OCR reads stray pixels adjacent to the closing bracket as extra characters inside the player name token (`A7X` → `A7Xl•.`/`A7Xl�.`). Same root-cause class as the trailing-`l` / `I` cleanup in T-15 / T-16, but the suffix here is multi-character noise that the existing `ocr_fix_closing_bracket` heuristic does not strip. Fixing this class generally needs OCR character-level confidence or a corpus-based player-name check (same blocker as T-17).
-  2. **Warning text bleed (non-deterministic):** T-27 (warning in `SYSTEM_PATTERNS`) only matches when OCR returns the full warning as ONE line. In this fixture OCR splits the warning across two raw lines (`"Warning! You're voting to ban your teammate's"` + `"preferred hero."`) because the chat-panel width forces a wrap, so the per-line `SYSTEM_REGEX.search` no longer matches either half. T-28 (max vertical gap for continuation) catches the bleed when the y-gap between `gg` and the warning is large enough — in the `--analyze` run it was 207 px (over the ≈140-160 threshold), preventing the bleed. The pytest run must have had different OCR y-coordinates that fell under the threshold. So T-27 + T-28 both work as designed; they happen to fully cover this fixture in some runs and miss in others, depending on OCR's y-precision and reconstruction. **T-47 was filed assuming this was a per-line system-pattern scrub gap; the actual gap is OCR-engine non-determinism on the same input. Re-scope or close T-47 — the per-line logic is sound; the data into it is jittery.**
-- **Hidden hero info for T-46 on this fixture:** team channel has `A7X (Ana) to Rizzmaser303 (Orisa); Hello!` (whisper, 2 hero records) and `clutches4fun (Ashe); Hello!` (greet, 1 record).
-
-### example_18 - message content truncated (mask gap, NOT crop boundary)
+### example_18 - OCR engine drops `-2-2 pls` mid-line (NOT a mask gap)
 - **Channel:** team_lines
 - **Expected:** `[Brummer]: guys........... 2-2-2 pls`
 - **Actual:** `[Brummer]: guys........... 2`
-- **Root cause (`--analyze`, 2026-05-03):** OCR returns `[Brummer]; guys........... 2` with the rightmost box (`2`) ending at x=845 in upscaled coords (~x=291 in screen-region coords). The default `screen_region` width is 400 — there are 189 px of unused horizontal space to the right of the truncation point, so this is **NOT a crop-boundary clip** as the pre-`--analyze` triage assumed. The mask itself is failing to capture `-2-2 pls` despite ample room. Hyphens and digits should mask cleanly in the team band; needs the `team_mask.png` for this fixture inspected to see whether the mask is empty in that region (mask gap) or non-empty but missed by OCR (engine drop similar to ex_31's symbol-dropout).
-- **Related task:** T-52 framing was wrong (this is not the same class as ex_25 line-reconstruction split). Closest fit is T-30 (mask quality) — needs a separate sub-investigation. Document and revisit once the team_mask is inspected.
+- **Root cause (verified 2026-05-14 by writing `team_mask.png` to disk):**
+  the team mask shows the **full** `[Brummer]: guys........... 2-2-2 pls`
+  string rendered cleanly in white-on-black. The Windows OCR engine
+  returns the prefix, `guys...........`, and a single `2` box at
+  x=809–845 (upscaled) — then **stops emitting boxes** despite obvious
+  text continuing to the right. This is an OCR-engine token-emission
+  failure, not a mask issue and not a crop-boundary clip. EasyOCR
+  baseline drops it similarly. No pipeline-side tuning recovers a
+  segment the OCR backend declined to emit.
+- **Related tasks:** none actionable inside this repo's mask /
+  reconstruction layer. Workaround would require a second pass with a
+  different OCR backend or a different tessellation strategy.
 
 ### example_22 - all_mask over-leakage causes duplicate detection + missed lines
 - **Channel:** all_lines (team_lines actually passes — confirmed via `--analyze`, 2026-05-03)

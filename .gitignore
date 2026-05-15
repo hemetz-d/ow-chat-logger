@@ -29,5 +29,8 @@ htmlcov/
 debug_snaps/
 *.csv
 
+# Diagnostic-tool scratch output (tools/analyze_fixture.py default --output-dir)
+tmp/
+
 .claude/
 .clone/
