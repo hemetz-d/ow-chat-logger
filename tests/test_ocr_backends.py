@@ -18,7 +18,7 @@ def test_resolve_ocr_profile_uses_windows_default_profile():
     assert profile.name == "windows_default"
     assert profile.engine_id == "windows"
     assert profile.pipeline["scale_factor"] == 4
-    assert profile.pipeline["max_continuation_y_gap_factor"] == 2.0
+    assert profile.pipeline["max_continuation_y_gap_factor"] == 1.5
 
 
 def test_merge_runtime_config_maps_legacy_flat_overrides_to_default_profile():

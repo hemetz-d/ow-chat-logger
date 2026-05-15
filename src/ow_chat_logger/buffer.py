@@ -1,6 +1,10 @@
 from ow_chat_logger.parser import classify_line
 
 
+def _is_single_glyph(text: str) -> bool:
+    return len(text) == 1 and text.isalnum()
+
+
 class MessageBuffer:
     def __init__(self):
         self.current = None
@@ -45,11 +49,15 @@ class MessageBuffer:
         # -----------------------
         if category == "continuation":
             text = classification["msg"].strip()
+            if _is_single_glyph(text):
+                return None
             if (prefix_evidence or {}).get("has_missing_prefix_evidence"):
+                recovered = (prefix_evidence or {}).get("recovered_player")
+                player = recovered if isinstance(recovered, str) and recovered else "unknown"
                 return self._start_message(
                     {
                         "category": "standard",
-                        "player": "unknown",
+                        "player": player,
                         "hero": "",
                         "msg": text,
                         "ocr_fix_closing_bracket": False,

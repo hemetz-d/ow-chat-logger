@@ -130,6 +130,33 @@ def _line_height(line) -> float:
     return _line_bottom_y(line) - _line_top_y(line) if line else 0.0
 
 
+_SPEAKER_RECOVERY_BODY_X_TOLERANCE_PX = 18.0
+
+
+def _recover_player_by_body_alignment(
+    first_box_x: float,
+    anchor_players: list[str],
+    anchor_body_xs: list[float],
+) -> str | None:
+    distinct_players = {p for p in anchor_players if p}
+    if len(distinct_players) < 2:
+        return None
+
+    best_dx: float | None = None
+    best_player: str | None = None
+    for player, anchor_body_x in zip(anchor_players, anchor_body_xs):
+        if not player:
+            continue
+        dx = abs(first_box_x - float(anchor_body_x))
+        if best_dx is None or dx < best_dx:
+            best_dx = dx
+            best_player = player
+
+    if best_dx is None or best_dx > _SPEAKER_RECOVERY_BODY_X_TOLERANCE_PX:
+        return None
+    return best_player
+
+
 def _segment_dict(bbox, text: str) -> dict[str, float | str]:
     xs = [float(point[0]) for point in bbox]
     ys = [float(point[1]) for point in bbox]
@@ -257,7 +284,7 @@ def compute_prefix_evidence_for_lines(
         min_line_height_fraction,
     )
 
-    def _extract_anchor(line: dict[str, Any]) -> dict[str, float] | None:
+    def _extract_anchor(line: dict[str, Any]) -> dict[str, Any] | None:
         classification = classify_line(str(line["text"]))
         if classification["category"] != "standard":
             return None
@@ -298,6 +325,7 @@ def compute_prefix_evidence_for_lines(
             "prefix_start_x": prefix_start_x,
             "body_start_x": body_start_x,
             "span_width": body_start_x - prefix_start_x,
+            "player": str(classification.get("player") or ""),
         }
 
     anchors = [anchor for line in line_data if (anchor := _extract_anchor(line)) is not None]
@@ -309,6 +337,7 @@ def compute_prefix_evidence_for_lines(
         "anchor_prefix_start_xs": [anchor["prefix_start_x"] for anchor in anchors],
         "anchor_body_start_xs": [anchor["body_start_x"] for anchor in anchors],
         "anchor_span_widths": [anchor["span_width"] for anchor in anchors],
+        "anchor_players": [anchor["player"] for anchor in anchors],
     }
     if layout["has_learned_layout"]:
         prefix_start_x = float(np.median(layout["anchor_prefix_start_xs"]))
@@ -387,6 +416,14 @@ def compute_prefix_evidence_for_lines(
             and probe_largest_component_fraction <= max_largest_component_fraction
         )
 
+        recovered_player: str | None = None
+        if has_missing_prefix_evidence:
+            recovered_player = _recover_player_by_body_alignment(
+                first_box_x=first_box_x,
+                anchor_players=layout["anchor_players"],
+                anchor_body_xs=layout["anchor_body_start_xs"],
+            )
+
         evidence.append(
             {
                 "anchor_count": layout["anchor_count"],
@@ -407,6 +444,7 @@ def compute_prefix_evidence_for_lines(
                 "line_height_ratio": line_height_ratio,
                 "within_line_height_range": within_line_height_range,
                 "has_missing_prefix_evidence": has_missing_prefix_evidence,
+                "recovered_player": recovered_player,
             }
         )
 
